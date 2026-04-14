@@ -47,6 +47,7 @@ class ActionType(str, enum.Enum):
     reject  = "reject"
     comment = "comment"
     request_changes = "request_changes"
+    acknowledge = "acknowledge"
 
 
 class AuditEventType(str, enum.Enum):
@@ -251,6 +252,7 @@ class ApprovalLog(Base):
     issue_group_code  = Column(String(50), nullable=False)
     comment           = Column(Text, nullable=True)
     meta_data         = Column(JSON, nullable=True)
+    is_acknowledged   = Column(Boolean, default=False)
     logged_at         = Column(DateTime, default=datetime.utcnow)
 
 

@@ -59,6 +59,7 @@ class UserSimple(BaseModel):
     id: UUID
     email: str
     name: str
+    role_code: RoleCode
     class Config: from_attributes = True
 
 class FactCandidateResponse(BaseModel):

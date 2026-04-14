@@ -45,6 +45,7 @@ export const api = {
     body: JSON.stringify({ fact_candidate_id: factCandidateId, message })
   })).then(handleResponse),
   getMemoThread: (factCandidateId) => fetch(`${BASE_URL}/memos/thread/${factCandidateId}`, defaultOptions()).then(handleResponse),
+  acknowledgeMemo: (memoId) => fetch(`${BASE_URL}/memo/${memoId}/acknowledge`, defaultOptions({ method: "POST" })).then(handleResponse),
 
   // Setup
   seed: (companyName) =>

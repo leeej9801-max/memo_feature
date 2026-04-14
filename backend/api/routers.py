@@ -194,7 +194,8 @@ def list_facts(
             ApprovalLog.fact_candidate_id,
             func.count(ApprovalLog.id).label("cnt")
         ).filter(
-            ApprovalLog.action.in_([ActionType.comment, ActionType.request_changes])
+            ApprovalLog.action.in_([ActionType.comment, ActionType.request_changes]),
+            ApprovalLog.is_acknowledged == False
         ).group_by(ApprovalLog.fact_candidate_id).subquery()
 
         query = db.query(
@@ -208,7 +209,7 @@ def list_facts(
             joinedload(FactCandidate.assigned_user)
         ).filter(
             FactCandidate.company_id == current_user.company_id
-        )
+        ).order_by(FactCandidate.metric_id.asc(), FactCandidate.id.asc())
 
         if status:
             query = query.filter(FactCandidate.status == status)
@@ -246,6 +247,24 @@ def submit(
         action=ActionType.submit,
         message="성공적으로 제출되었습니다.",
     )
+
+@router.post("/memo/{memo_id}/acknowledge", tags=["STEP2 - Approval"])
+def acknowledge_memo(
+    memo_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """메모 확인 처리 (알림 숫자 감소)"""
+    memo = db.query(ApprovalLog).filter(
+        ApprovalLog.id == memo_id,
+        ApprovalLog.company_id == current_user.company_id
+    ).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="Memo not found")
+        
+    memo.is_acknowledged = True
+    db.commit()
+    return {"status": "ok", "message": "Memo acknowledged"}
 
 
 @router.post("/fact/{fact_id}/approve", response_model=ApprovalActionResponse, tags=["STEP2 - Approval"])

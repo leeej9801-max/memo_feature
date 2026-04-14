@@ -58,8 +58,17 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
-    if (token) setInviteToken(token);
-    checkSession();
+    if (token) {
+      setInviteToken(token);
+      // 초대 링크이면 기존 세션 무시하고 로그인 화면 보여주기
+      // (다른 계정으로 로그인 된 경우를 방지)
+      api.logout().catch(() => {}).finally(() => {
+        setSession(null);
+        setLoading(false);
+      });
+    } else {
+      checkSession();
+    }
   }, []);
 
   // 세션 로드 후 주기적으로 스레드 갱신
@@ -110,14 +119,27 @@ export default function App() {
                 : "ESG 데이터 관리 및 협업을 위한 통합 플랫폼입니다."}
             </p>
           </div>
-          <a href={googleLoginUrl} className="google-btn">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/smartlock/google.svg" width="18" alt="G" />
-            {inviteToken ? "초대 수락 및 Google 로그인" : "Google 계정으로 관리자 로그인"}
+          <a href={googleLoginUrl} className="google-btn" style={{ textDecoration: 'none' }}>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" width="20" height="20" alt="Google" />
+            <span style={{ marginLeft: 8 }}>
+              {inviteToken ? "초대 수락 및 Google 로그인" : "Google 계정으로 관리자 로그인"}
+            </span>
           </a>
           <div style={{ marginTop: 24, padding: "16px 0", borderTop: "1px solid var(--border-glass)" }}>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>빠른 서버 확인 (개발 전용)</p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button className="btn btn-sm btn-ghost" onClick={() => api.mockLogin("leeej9801@gmail.com").then(checkSession)}>Admin Mock</button>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>빠른 서버 확인 (개발 전용)</p>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                id="mock-email-input"
+                type="email"
+                defaultValue="leeej9801@gmail.com"
+                placeholder="이메일 입력"
+                style={{ flex: 1, padding: "6px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-glass)", background: "rgba(255,255,255,0.05)", color: "var(--text-primary)", fontSize: 11 }}
+              />
+              <button className="btn btn-sm btn-ghost" onClick={() => {
+                const email = document.getElementById("mock-email-input").value.trim();
+                if (!email) return;
+                api.mockLogin(email).then(() => checkSession()).catch(e => toast.error(e?.detail || "Mock 로그인 실패. 초대 목록에 있는지 확인하세요."));
+              }}>로그인</button>
             </div>
           </div>
         </div>

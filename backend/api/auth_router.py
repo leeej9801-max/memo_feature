@@ -172,6 +172,7 @@ async def mock_login(email: str, request: Request, db: Session = Depends(get_db)
     user = db.query(UserAccount).filter(UserAccount.email == email).first()
     if not user:
         if email == "leeej9801@gmail.com":
+            # 관리자 계정 자동 생성
             company = db.query(Company).filter(Company.name == "Initial Tenant").first()
             if not company:
                 company = Company(name="Initial Tenant")
@@ -181,7 +182,42 @@ async def mock_login(email: str, request: Request, db: Session = Depends(get_db)
             db.add(user)
             db.commit()
         else:
-            raise HTTPException(status_code=404, detail="Mock User not found")
+            # 초대받은 이메일이면 자동으로 계정 생성 (개발 편의)
+            invite = db.query(UserInvite).filter(
+                UserInvite.email == email,
+                UserInvite.status == "pending"
+            ).first()
+            if invite:
+                user = UserAccount(
+                    company_id=invite.company_id,
+                    email=email,
+                    name=email.split("@")[0],  # 이메일 앞부분을 이름으로 임시 사용
+                    role_code=RoleCode.data_entry
+                )
+                db.add(user)
+                db.flush()
+                
+                # 초대 상태 업데이트 및 배정 자동화
+                invite.status = "accepted"
+                if invite.department_id:
+                    facts = db.query(FactCandidate).filter(
+                        FactCandidate.company_id == invite.company_id,
+                        FactCandidate.department_id == invite.department_id
+                    ).all()
+                    for f in facts:
+                        f.assigned_user_id = user.id
+                        
+                if invite.issue_group_code:
+                    new_scope = ApprovalScope(
+                        user_id=user.id,
+                        scope_value=invite.issue_group_code,
+                        action_type=ActionType.submit
+                    )
+                    db.add(new_scope)
+                    
+                db.commit()
+            else:
+                raise HTTPException(status_code=404, detail=f"유저를 찾을 수 없습니다: {email}. 초대 목록을 확인하세요.")
             
     request.session['user_id'] = str(user.id)
     request.session['company_id'] = str(user.company_id)

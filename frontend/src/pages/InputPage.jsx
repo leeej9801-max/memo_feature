@@ -257,10 +257,10 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          {f.status === 'draft' && <span className="badge badge-ghost" style={{minWidth: 60}}>📝 대기</span>}
-                          {f.status === 'submitted' && <span className="badge badge-primary" style={{minWidth: 60}}>👀 검토중</span>}
-                          {f.status === 'approved' && <span className="badge badge-success" style={{minWidth: 60}}>✅ 승인</span>}
-                          {(f.status === 'rejected' || f.status === 'request_changes') && <span className="badge badge-danger" style={{minWidth: 60}}>❌ 반려</span>}
+                          {f.status === 'draft' && <span className="badge badge-draft" style={{minWidth: 55, textAlign: 'center'}}>대기</span>}
+                          {f.status === 'submitted' && <span className="badge badge-submitted" style={{minWidth: 55, textAlign: 'center'}}>검토중</span>}
+                          {f.status === 'approved' && <span className="badge badge-approved" style={{minWidth: 55, textAlign: 'center'}}>승인</span>}
+                          {(f.status === 'rejected' || f.status === 'request_changes') && <span className="badge badge-rejected" style={{minWidth: 55, textAlign: 'center'}}>반려</span>}
                           
                           {f.status === 'draft' && canEdit && (
                             <button className="btn btn-primary" style={{fontSize: 11, padding: '4px 8px', height: 'auto'}} onClick={() => handleSubmit(f.id)}>
@@ -330,9 +330,31 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                     <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{new Date(m.logged_at).toLocaleString()}</span>
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text-primary)" }}>{m.comment}</div>
-                  {m.action === 'request_changes' && (
-                     <div style={{marginTop: 8, fontSize: 11, color: "var(--accent-yellow)", fontWeight: 600}}>⚠️ 수정 요청됨</div>
-                  )}
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                    <div>
+                      {m.action === 'request_changes' && (
+                         <div style={{fontSize: 11, color: "var(--accent-yellow)", fontWeight: 600}}>⚠️ 수정 요청됨</div>
+                      )}
+                    </div>
+                    
+                    <button 
+                      className="btn btn-ghost" 
+                      style={{ fontSize: 10, padding: '2px 8px', height: 'auto', border: '1px solid var(--border-glass)' }}
+                      onClick={async () => {
+                        try {
+                          await api.acknowledgeMemo(m.id);
+                          toast.success("확인 처리되었습니다.");
+                          loadMemos(selectedFact.id);
+                          load(); // Update sidebar/table count
+                        } catch (e) {
+                          toast.error("처리 실패");
+                        }
+                      }}
+                    >
+                      ✓ 확인
+                    </button>
+                  </div>
                 </div>
                );
              })}
