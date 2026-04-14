@@ -21,9 +21,12 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+import logging
 import csv
 import io
 import traceback
+
+logger = logging.getLogger(__name__)
 
 from database import SessionLocal
 from dependencies import get_db, get_current_user
@@ -107,6 +110,10 @@ def upload_json(
     """
     try:
         # 데모 편의상: 새로 로드할 때 테넌트의 모든 비즈니스 데이터를 초기화
+        # 0) Enum 깨짐 방지: 잘못된 client_user를 data_entry로 강제 업데이트 (Raw SQL)
+        from sqlalchemy import text
+        db.execute(text("UPDATE user_account SET role_code = 'data_entry' WHERE role_code = 'client_user'"))
+        
         db.query(ApprovalLog).filter(ApprovalLog.company_id == current_user.company_id).delete()
         db.query(KPIFact).filter(KPIFact.company_id == current_user.company_id).delete()
         db.query(FactCandidate).filter(FactCandidate.company_id == current_user.company_id).delete()

@@ -5,7 +5,7 @@ auth_router.py - Google OAuth 및 세션 라우터
 import os
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from authlib.integrations.starlette_client import OAuth
 
 from datetime import datetime
@@ -108,6 +108,11 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
             
             db.commit()
             
+            # 0) Enum 깨짐 방지: 잘못된 client_user를 data_entry로 강제 업데이트 (로그인 시점)
+            from sqlalchemy import text
+            db.execute(text("UPDATE user_account SET role_code = 'data_entry' WHERE role_code = 'client_user'"))
+            db.commit()
+
         request.session['user_id'] = str(user.id)
         request.session['company_id'] = str(user.company_id)
         request.session['email'] = user.email
@@ -203,6 +208,7 @@ class InviteRequest(BaseModel):
     email: str
     issue_group_code: str = None
     department_id: str = None
+    department_name: str = None # 추가
     metric_id: str = None
 
 import uuid as uuid_pkg
@@ -218,12 +224,23 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
     invite = db.query(UserInvite).filter(UserInvite.company_id == company_id, UserInvite.email == req.email).first()
     token = str(uuid_pkg.uuid4())
     
+    # 부서명 기반 처리
+    target_dept_id = req.department_id
+    if req.department_name and not target_dept_id:
+        # 부서 없으면 생성
+        from models import Department
+        dept = db.query(Department).filter(Department.company_id == company_id, Department.name == req.department_name).first()
+        if not dept:
+            dept = Department(company_id=company_id, name=req.department_name, issue_group_code=req.issue_group_code or "CSV")
+            db.add(dept)
+            db.flush()
+        target_dept_id = str(dept.id)
+
     if invite:
         if invite.status == "accepted":
             raise HTTPException(status_code=400, detail="User already accepted invitation")
-        # 기존 초대 정보 업데이트 및 토큰 갱신 (초기화 기능)
         invite.issue_group_code = req.issue_group_code
-        invite.department_id = req.department_id
+        invite.department_id = target_dept_id
         invite.metric_id = req.metric_id
         invite.invite_token = token
         invite.created_at = datetime.utcnow()
@@ -232,7 +249,7 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
             company_id=company_id,
             email=req.email,
             issue_group_code=req.issue_group_code,
-            department_id=req.department_id,
+            department_id=target_dept_id,
             metric_id=req.metric_id,
             invite_token=token
         )
@@ -271,7 +288,7 @@ async def list_users(request: Request, db: Session = Depends(get_db)):
     if role != RoleCode.tenant_admin.value:
         raise HTTPException(status_code=403, detail="Tenant admin only")
 
-    users = db.query(UserAccount).filter(UserAccount.company_id == company_id).all()
+    users = db.query(UserAccount).options(joinedload(UserAccount.department)).filter(UserAccount.company_id == company_id).all()
     return {
         "users": [
             {
@@ -279,6 +296,7 @@ async def list_users(request: Request, db: Session = Depends(get_db)):
                 "email": u.email,
                 "name": u.name,
                 "role_code": u.role_code.value,
+                "department": u.department.name if u.department else "소속 없음",
                 "is_active": u.is_active
             } for u in users
         ]

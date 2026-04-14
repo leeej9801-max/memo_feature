@@ -113,6 +113,31 @@ def tone_node(state: MemoState):
     except Exception as e:
         return {"refined_text": user_prompt, "fallback_used": True, "error_stage": "tone", "error_detail": str(e), "agent_trace": ["tone_fallback"]}
 
+def validation_node(state: MemoState):
+    """지표와 메시지의 연관성 체크 (Supervisor 역할)"""
+    start_time = time.time()
+    user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
+    metric_id = state.get("fact_context", {}).get("metric_id")
+    
+    system_prompt = f"""You are an ESG Compliance Supervisor.
+Check if the user's message is RELEVANT to the metric [{metric_id}].
+If it is totally irrelevant (e.g., 'Hello', 'What's for lunch'), output 'REJECT'.
+If it is relevant, output 'PROCEED'. Return ONLY one word."""
+    
+    try:
+        response = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+        decision = response.content.strip().upper()
+        logger.info(f"Validation Agent finished in {time.time()-start_time:.2f}s: {decision}")
+        return {"agent_trace": ["validation"], "memo_type": "rejected" if "REJECT" in decision else state.get("memo_type")}
+    except Exception as e:
+        return {"agent_trace": ["validation_error"]}
+
+def router_node(state: MemoState):
+    """Determine next step based on validation"""
+    if "rejected" in state.get("memo_type", ""):
+        return END
+    return "intent_node"
+
 def persist_node(state: MemoState):
     fc = state.get("fact_context", {})
     ac = state.get("actor_context", {})
@@ -147,23 +172,27 @@ def get_memo_graph():
     workflow = StateGraph(MemoState)
     
     workflow.add_node("context_node", context_node)
+    workflow.add_node("validation_node", validation_node)
     workflow.add_node("intent_node", intent_node)
     workflow.add_node("tone_node", tone_node)
     workflow.add_node("persist_node", persist_node)
     
-    # Linear but branched if parallel is possible
     workflow.add_edge(START, "context_node")
+    workflow.add_edge("context_node", "validation_node")
     
-    # From context, we can run intent and tone IN PARALLEL
-    workflow.add_edge("context_node", "intent_node")
-    workflow.add_edge("context_node", "tone_node")
+    # Conditional Routing (Supervisor Logic)
+    workflow.add_conditional_edges(
+        "validation_node",
+        router_node,
+        {
+            "intent_node": "intent_node",
+             END: END
+        }
+    )
     
-    # Both merge at persist
-    workflow.add_edge("intent_node", "persist_node")
+    # Continue parallel if valid
+    workflow.add_edge("intent_node", "tone_node")
     workflow.add_edge("tone_node", "persist_node")
-    
     workflow.add_edge("persist_node", END)
     
-    # Node logic fix: intent and tone must finish for persist
-    # LangGraph will automatically join these if they are multiple edges into one node.
     return workflow.compile()
