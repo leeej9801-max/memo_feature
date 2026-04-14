@@ -5,6 +5,16 @@ import { api } from "../api";
 const STATUS_COLOR  = { draft: "badge-draft", submitted: "badge-submitted", approved: "badge-approved", rejected: "badge-rejected" };
 const STATUS_LABELS = { draft: "Draft", submitted: "제출됨", approved: "승인됨", rejected: "반려됨" };
 
+// 메타데이터 매핑용 (InputPage와 동일 방식, 이상적으로 백엔드서 받아와야함)
+const METRIC_META = {
+  "E1-01": { label: "온실가스 배출량", question: "직접(Scope 1) 및 간접(Scope 2) 온실가스 배출량을 입력하세요." },
+  "E1-02": { label: "에너지 사용량", question: "연간 총 에너지 사용량을 유형별로 기재하세요." },
+  "S1-01": { label: "산업재해율", question: "최근 1개년도 산업재해 발생 건수 및 재해율을 입력하세요." },
+  "G1-01": { label: "이사회 구성", question: "이사회 내 사외이사 및 여성 임원 비율을 기재해주세요." }
+};
+const getMeta = (metricId) => METRIC_META[metricId] || { label: "기타 지표", question: "-" };
+
+
 export default function ApprovalPage({ session }) {
   const [facts,      setFacts]      = useState([]);
   const [filter,     setFilter]     = useState("");
@@ -16,7 +26,7 @@ export default function ApprovalPage({ session }) {
     if (!session) return;
     setLoading(true);
     try {
-      const data = await api.listFacts(session.userId, session.companyId, filter);
+      const data = await api.listFacts(filter);
       setFacts(data);
     } catch (e) {
       toast.error("조회 실패");
@@ -27,21 +37,23 @@ export default function ApprovalPage({ session }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (!session) {
-    return <div className="empty-state"><p>⚙️ 먼저 설정 탭에서 사용자를 선택해주세요.</p></div>;
+  if (session?.role_code !== "tenant_admin") {
+    return <div className="empty-state"><p>접근 권한이 없습니다 (tenant_admin 전용).</p></div>;
   }
 
   async function action(type, factId) {
     setActioning(factId + type);
     try {
       let result;
-      if (type === "submit")  result = await api.submit(factId, session.userId, session.companyId);
-      if (type === "approve") result = await api.approve(factId, session.userId, session.companyId);
+      if (type === "approve") result = await api.approve(factId);
       if (type === "reject") {
-        result = await api.reject(factId, session.userId, session.companyId, rejectInfo?.comment || "");
+        result = await api.reject(factId, rejectInfo?.comment || "");
+        
+        // 반려 동작의 특징: 자동으로 reject 사유를 메모(스레드)에도 남긴다고 응용 가능.
+        // 현재는 approval_log에 action="reject"로 들어가므로 memo 쿼리 시 스레드에서 잡힙니다.
         setRejectInfo(null);
       }
-      toast.success(result.message);
+      toast.success("반영 성공!");
       load();
     } catch (e) {
       toast.error(e?.detail || `${type} 실패`);
@@ -61,28 +73,15 @@ export default function ApprovalPage({ session }) {
   return (
     <div>
       <div className="page-header">
-        <h2>✅ 승인 워크플로우 — STEP 2</h2>
-        <p>Fact Candidate의 상태를 관리합니다. 권한에 따라 액션이 제한됩니다.</p>
-      </div>
-
-      {/* User bar */}
-      <div className="user-bar">
-        <div className="user-bar-field">
-          <span className="user-bar-label">현재 사용자</span>
-          <span className="user-bar-value">{session.userEmail}</span>
-        </div>
-        <div className="user-bar-field">
-          <span className="user-bar-label">역할</span>
-          <span className="user-bar-value" style={{ color: "var(--accent-purple)" }}>{session.userRole}</span>
-        </div>
+        <h2>✅ 승인 워크플로우 (관리자 전용)</h2>
+        <p>제출된 지표(Fact Candidate)의 Data Evidence를 검토하고 승인합니다.</p>
       </div>
 
       {/* Stats */}
       <div className="stat-grid">
         {[
           { label: "전체",   val: counts.all,       cls: "blue" },
-          { label: "Draft",  val: counts.draft,     cls: "" },
-          { label: "제출됨", val: counts.submitted, cls: "yellow" },
+          { label: "제출됨 (대기)", val: counts.submitted, cls: "yellow" },
           { label: "승인됨", val: counts.approved,  cls: "green" },
           { label: "반려됨", val: counts.rejected,  cls: "red" },
         ].map((s) => (
@@ -95,7 +94,7 @@ export default function ApprovalPage({ session }) {
 
       {/* Filter */}
       <div className="pill-group" style={{ marginBottom: 16 }}>
-        {["", "draft", "submitted", "approved", "rejected"].map((s) => (
+        {["", "submitted", "approved", "rejected", "draft"].map((s) => (
           <button key={s} className={`pill ${filter === s ? "active" : ""}`} onClick={() => setFilter(s)}>
             {s || "전체"}
           </button>
@@ -111,11 +110,11 @@ export default function ApprovalPage({ session }) {
           <table>
             <thead>
               <tr>
-                <th>Issue Group</th>
-                <th>Metric ID</th>
-                <th>값</th>
+                <th>지표 정보</th>
+                <th>담당자/부서</th>
                 <th>상태</th>
-                <th>생성일</th>
+                <th>제출/수정일</th>
+                <th>증빙</th>
                 <th>액션</th>
               </tr>
             </thead>
@@ -124,54 +123,58 @@ export default function ApprovalPage({ session }) {
                 <tr><td colSpan={6} style={{ textAlign: "center", padding: 32 }}><span className="spinner" /></td></tr>
               ) : facts.length === 0 ? (
                 <tr><td colSpan={6}><div className="empty-state"><p>데이터가 없습니다</p></div></td></tr>
-              ) : facts.map((f) => (
-                <tr key={f.id}>
-                  <td><span className="mono">{f.issue_group_code}</span></td>
-                  <td>{f.metric_id}</td>
-                  <td>{f.value ?? f.value_text ?? "-"}</td>
-                  <td>
-                    <span className={`badge ${STATUS_COLOR[f.status]}`}>
-                      {STATUS_LABELS[f.status]}
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                    {new Date(f.created_at).toLocaleDateString("ko-KR")}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      {f.status === "draft" && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          disabled={!!actioning}
-                          onClick={() => action("submit", f.id)}
-                        >
-                          {actioning === f.id + "submit" ? <span className="spinner" /> : "제출"}
-                        </button>
-                      )}
-                      {f.status === "submitted" && (
-                        <>
-                          <button
-                            className="btn btn-approve btn-sm"
-                            disabled={!!actioning}
-                            onClick={() => action("approve", f.id)}
-                          >
-                            {actioning === f.id + "approve" ? <span className="spinner" /> : "승인"}
-                          </button>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            disabled={!!actioning}
-                            onClick={() => {
-                              setRejectInfo({ factId: f.id, comment: "" });
-                            }}
-                          >
-                            반려
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              ) : facts.map((f) => {
+                const meta = getMeta(f.metric_id);
+                return (
+                  <tr key={f.id}>
+                    <td>
+                      <div className="badge" style={{marginBottom:4, display: "inline-block"}}>{f.issue_group_code}</div>
+                      <div style={{fontWeight: 600}}>{f.metric_id} <span style={{fontWeight: 400, color:"var(--text-muted)"}}>— {meta.label}</span></div>
+                    </td>
+                    <td>
+                      <div style={{fontSize: 13}}>{f.submitted_by_user?.email || "-"}</div>
+                      <div style={{fontSize: 11, color: "var(--text-muted)"}}>{f.department?.name || "-"}</div>
+                    </td>
+                    <td>
+                      <span className={`badge ${STATUS_COLOR[f.status]}`}>
+                        {STATUS_LABELS[f.status]}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                      {new Date(f.updated_at).toLocaleDateString("ko-KR")}
+                    </td>
+                    <td>
+                       <button className="btn btn-sm btn-ghost" style={{fontSize: 11}} onClick={() => toast("증빙 뷰어 Mock 오픈!")}>
+                         📎 증빙 확인
+                       </button>
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        {f.status === "submitted" && (
+                          <>
+                            <button
+                              className="btn btn-approve btn-sm"
+                              disabled={!!actioning}
+                              onClick={() => action("approve", f.id)}
+                            >
+                              {actioning === f.id + "approve" ? <span className="spinner" /> : "승인"}
+                            </button>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              disabled={!!actioning}
+                              onClick={() => {
+                                setRejectInfo({ factId: f.id, comment: "" });
+                              }}
+                            >
+                              반려
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -186,16 +189,17 @@ export default function ApprovalPage({ session }) {
           }}
         >
           <div className="card fade-in" style={{ width: 400 }}>
-            <div className="card-title" style={{ marginBottom: 16 }}>반려 사유 입력</div>
+            <div className="card-title" style={{ marginBottom: 16 }}>이견/반려 사유 입력</div>
+            <div style={{fontSize: 12, color: "var(--text-muted)", marginBottom: 12}}>입력된 사유는 해당 지표의 협업 스레드(메모)에 기록됩니다.</div>
             <textarea
               className="form-textarea"
-              placeholder="반려 사유를 입력하세요..."
+              placeholder="반려 사유(증빙 부족, 수치 오류 등)를 명확히 적어주세요..."
               value={rejectInfo.comment}
               onChange={(e) => setRejectInfo({ ...rejectInfo, comment: e.target.value })}
             />
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button className="btn btn-danger" onClick={() => action("reject", rejectInfo.factId)}>
-                반려 확정
+                반려 처리 
               </button>
               <button className="btn btn-ghost" onClick={() => setRejectInfo(null)}>취소</button>
             </div>

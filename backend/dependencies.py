@@ -9,7 +9,7 @@ dependencies.py - FastAPI Depends 인증 & 권한 검증
 
 from typing import Generator
 from uuid import UUID
-from fastapi import Header, HTTPException, Depends, status
+from fastapi import Request, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -29,31 +29,29 @@ def get_db() -> Generator:
         db.close()
 
 
-# ─────────────────────────────────────────────────────────
-# 인증 Dependency  (MVP: Header 기반)
-#
-# 실제 프로덕션에서는 JWT Bearer 토큰으로 교체할 것.
-# Header:
-#   X-User-ID     : User UUID
-#   X-Company-ID  : Company UUID (테넌트 격리 1차 검증)
-# ─────────────────────────────────────────────────────────
-
 def get_current_user(
-    x_user_id: str    = Header(..., alias="X-User-ID"),
-    x_company_id: str = Header(..., alias="X-Company-ID"),
-    db: Session        = Depends(get_db),
+    request: Request,
+    db: Session = Depends(get_db),
 ) -> CurrentUser:
     """
-    1차 검증: user_id가 실제로 존재하는가
-    2차 검증: 해당 user의 company_id가 요청 company_id와 일치하는가
+    1차 검증: Session 기반 사용자 인가
     """
+    user_id_str = request.session.get("user_id")
+    company_id_str = request.session.get("company_id")
+
+    if not user_id_str or not company_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session not found. Please login via Google OAuth.",
+        )
+
     try:
-        user_uuid    = UUID(x_user_id)
-        company_uuid = UUID(x_company_id)
+        user_uuid    = UUID(user_id_str)
+        company_uuid = UUID(company_id_str)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid UUID format in headers.",
+            detail="Invalid UUID format in session.",
         )
 
     # 1차: DB에서 사용자 조회

@@ -49,6 +49,17 @@ class CSVUploadResponse(BaseModel):
 # STEP 2: Approval
 # ─────────────────────────────────────────────────────────
 
+class DeptSimple(BaseModel):
+    id: UUID
+    name: str
+    class Config: from_attributes = True
+
+class UserSimple(BaseModel):
+    id: UUID
+    email: str
+    name: str
+    class Config: from_attributes = True
+
 class FactCandidateResponse(BaseModel):
     id: UUID
     company_id: UUID
@@ -59,6 +70,11 @@ class FactCandidateResponse(BaseModel):
     status: FactStatus
     created_at: datetime
     updated_at: datetime
+    
+    # Relationships & Counts
+    department: Optional[DeptSimple] = None
+    submitted_by_user: Optional[UserSimple] = None
+    comment_count: int = 0
 
     class Config:
         from_attributes = True

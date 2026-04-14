@@ -1,140 +1,130 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { api } from "../api";
 
-export default function SetupPage({ session, setSession }) {
-  const [companyName, setCompanyName] = useState("테스트 회사");
-  const [loading, setLoading] = useState(false);
-  const [seedData, setSeedData] = useState(null);
-  const [activeUser, setActiveUser] = useState(null);
+export default function SetupPage({ session, refreshSession }) {
+  const [invites, setInvites] = useState([]);
+  const [email, setEmail] = useState("");
+  const [group, setGroup] = useState("CLIMATE");
 
-  async function handleSeed() {
-    setLoading(true);
+  const loadInvites = async () => {
     try {
-      const data = await api.seed(companyName);
-      setSeedData(data);
-      toast.success("시드 데이터 생성 완료!");
+      const data = await api.listInvites();
+      setInvites(data.invites);
     } catch (e) {
-      toast.error("시드 생성 실패: " + JSON.stringify(e));
-    } finally {
-      setLoading(false);
+      console.warn("Failed to load invites", e);
     }
-  }
+  };
 
-  function selectUser(role, info) {
-    setActiveUser({ role, ...info });
-    setSession({
-      companyId:   seedData.company_id,
-      companyName: companyName,
-      userId:      info.id,
-      userEmail:   info.email,
-      userRole:    role,
-      allUsers:    seedData.users,
-    });
-    toast.success(`사용자 선택: ${info.email}`);
-  }
+  useEffect(() => {
+    if (session?.role_code === "tenant_admin") {
+      loadInvites();
+    }
+  }, [session]);
 
-  const ROLES = [
-    { key: "tenant_admin",    label: "Tenant Admin",    color: "var(--accent-purple)", desc: "모든 권한" },
-    { key: "climate_manager", label: "환경팀 (CLIMATE)", color: "var(--accent-green)",  desc: "CLIMATE submit/approve" },
-    { key: "safety_manager",  label: "안전팀 (SAFETY)",  color: "var(--accent-blue)",   desc: "SAFETY submit/approve" },
-  ];
+  const handleInvite = async () => {
+    if (!email) return toast.error("이메일을 입력하세요.");
+    try {
+      const resp = await api.createInvite(email, group);
+      toast.success("초대 링크가 생성되었습니다.");
+      
+      // 초대링크 클립보드 복사 시도
+      if (resp.invite_url) {
+        navigator.clipboard.writeText(resp.invite_url);
+        toast("링크가 클립보드에 복사되었습니다.", { icon: '🔗' });
+      }
+      
+      setEmail("");
+      loadInvites();
+    } catch (e) {
+      toast.error(e?.detail || "초대 실패");
+    }
+  };
+
+  const copyLink = (token) => {
+    const url = `http://localhost:5173/?token=${token}`;
+    navigator.clipboard.writeText(url);
+    toast.success("링크 복사 완료");
+  };
+
+  if (session?.role_code !== "tenant_admin") {
+    return <div className="empty-state">권한이 없습니다. (tenant_admin 전용)</div>;
+  }
 
   return (
-    <div>
+    <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div className="page-header">
-        <h2>⚙️ 환경 설정</h2>
-        <p>테스트 시나리오용 시드 데이터 생성 및 사용자 전환</p>
+        <h2>⚙️ 테넌트 마스터 관리</h2>
+        <p>새 담당자를 초대하고 권한 범위를 설정합니다.</p>
       </div>
 
-      {/* Seed card */}
       <div className="card">
-        <div className="card-header">
-          <div>
-            <div className="card-title">테스트 데이터 생성</div>
-            <div className="card-desc">Company + Users + ApprovalScope를 자동으로 생성합니다</div>
+        <h3 style={{ marginBottom: 16, fontSize: 16 }}>신규 담당자 초대</h3>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label className="form-label">이메일 주소</label>
+            <input className="form-input" placeholder="example@company.com" value={email} onChange={e=>setEmail(e.target.value)} />
+          </div>
+          <div style={{ width: 240 }}>
+            <label className="form-label">담당 분야 (Issue Group)</label>
+            <select className="form-select" value={group} onChange={e=>setGroup(e.target.value)}>
+              <option value="CLIMATE">CLIMATE (기후변화)</option>
+              <option value="SAFETY">SAFETY (안전보건)</option>
+              <option value="HR">HR (인적자원)</option>
+              <option value="GOVERNANCE">GOVERNANCE (지배구조)</option>
+            </select>
+          </div>
+          <div style={{ alignSelf: "flex-end" }}>
+            <button className="btn btn-primary" onClick={handleInvite} style={{ height: 40 }}>초대장 생성</button>
           </div>
         </div>
-
-        <div className="form-group">
-          <label className="form-label">회사명</label>
-          <input
-            className="form-input"
-            style={{ maxWidth: 320 }}
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-          />
-        </div>
-
-        <button className="btn btn-primary" onClick={handleSeed} disabled={loading}>
-          {loading ? <span className="spinner" /> : "🌱"} 시드 생성
-        </button>
+        <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+           * 초대 시 생성된 고유 링크를 담당자에게 전달하면, 담당자는 구글 로그인을 통해 즉시 합류할 수 있습니다.
+        </p>
       </div>
 
-      {/* Result */}
-      {seedData && (
-        <div className="card fade-in" style={{ marginTop: 16 }}>
-          <div className="card-header">
-            <div className="card-title">사용자 선택 (현재 세션 전환)</div>
-          </div>
-
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-            {ROLES.map((role) => {
-              const info = seedData.users[role.key];
-              const isActive = activeUser?.id === info?.id;
-              return (
-                <div
-                  key={role.key}
-                  onClick={() => selectUser(role.key, info)}
-                  style={{
-                    background: isActive ? `rgba(255,255,255,0.06)` : "var(--bg-glass)",
-                    border: `1px solid ${isActive ? role.color : "var(--border-glass)"}`,
-                    borderRadius: "var(--radius-md)",
-                    padding: 16,
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <div style={{ color: role.color, fontWeight: 600, fontSize: 13 }}>{role.label}</div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>{role.desc}</div>
-                  <div style={{ color: "var(--text-secondary)", fontSize: 11, marginTop: 8 }}>
-                    {info?.email}
-                  </div>
-                  <div className="uuid-text" style={{ marginTop: 4 }}>{info?.id}</div>
-                  {isActive && (
-                    <div style={{ marginTop: 8, color: role.color, fontSize: 11, fontWeight: 600 }}>
-                      ● 현재 활성 사용자
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <hr className="divider" />
-          <div>
-            <div className="form-label">Company ID</div>
-            <span className="mono">{seedData.company_id}</span>
-          </div>
+      <div className="card" style={{ marginTop: 24, padding: 0 }}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-glass)" }}>
+          <h3 style={{ fontSize: 16 }}>초대 및 관리 현황</h3>
         </div>
-      )}
-
-      {/* 설계 원칙 */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-title" style={{ marginBottom: 12 }}>🔒 시스템 설계 원칙</div>
-        {[
-          ["KPI 경로", "Issue → Metric → KPI Fact (direct link 금지)"],
-          ["Evidence 강제", "증빙 없으면 보고서 생성 불가"],
-          ["데이터 격리", "모든 데이터는 company_id로 격리"],
-          ["3중 권한", "company_id / role_code / approval_scope"],
-          ["로그 분리", "audit_log (시스템) / approval_log (승인)"],
-          ["레이어 분리", "Master / Dictionary / Fact / Evidence / AI"],
-        ].map(([k, v]) => (
-          <div key={k} style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 13 }}>
-            <span style={{ color: "var(--accent-green)", minWidth: 80, fontWeight: 600 }}>{k}</span>
-            <span style={{ color: "var(--text-secondary)" }}>{v}</span>
-          </div>
-        ))}
+        <div className="table-wrapper" style={{ border: "none" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>이메일</th>
+                <th>상태</th>
+                <th>배정 그룹</th>
+                <th>초대 날짜</th>
+                <th>액션</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map(i => (
+                <tr key={i.id}>
+                  <td style={{ fontWeight: 500 }}>{i.email}</td>
+                  <td>
+                    <span className={`badge badge-${i.status === 'pending' ? 'submitted' : 'approved'}`}>
+                       {i.status === 'pending' ? '대기 중' : '수락됨'}
+                    </span>
+                  </td>
+                  <td><span className="badge" style={{background: 'rgba(255,255,255,0.05)'}}>{i.issue_group_code || '-'}</span></td>
+                  <td style={{fontSize: 12, color: "var(--text-muted)"}}>{new Date(i.created_at).toLocaleDateString()}</td>
+                  <td>
+                     {i.status === 'pending' && (
+                       <button className="btn btn-sm btn-ghost" onClick={() => copyLink(i.token)}>
+                         🔗 링크 복사
+                       </button>
+                     )}
+                     {i.status === 'accepted' && (
+                       <span style={{fontSize: 11, color: "var(--accent-green)"}}>활동 중</span>
+                     )}
+                  </td>
+                </tr>
+              ))}
+              {invites.length===0 && <tr><td colSpan={5} style={{textAlign: "center", padding: 40, color: "var(--text-muted)"}}>아직 초대된 사용자가 없습니다.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

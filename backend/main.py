@@ -4,6 +4,8 @@ main.py - FastAPI 애플리케이션 진입점
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+import os
 
 from database import engine, Base
 import models  # noqa: F401 – 모든 모델 등록 (create_all 대상)
@@ -49,6 +51,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv("SESSION_SECRET_KEY", "fallback_local_secret_key_if_missing"), 
+    max_age=86400
+)
+
 
 # ─────────────────────────────────────────────────────────
 # DB 테이블 자동 생성 (MVP: alembic 없이)
@@ -57,7 +65,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     Base.metadata.create_all(bind=engine)
-    print("✅ DB 테이블 초기화 완료")
+    print("[OK] DB Table Initialization Completed")
 
 
 # ─────────────────────────────────────────────────────────

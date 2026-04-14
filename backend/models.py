@@ -15,7 +15,7 @@ import enum
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Float, DateTime, ForeignKey,
-    Enum as SAEnum, Boolean, UniqueConstraint
+    Enum as SAEnum, Boolean, UniqueConstraint, JSON
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -45,6 +45,8 @@ class ActionType(str, enum.Enum):
     submit  = "submit"
     approve = "approve"
     reject  = "reject"
+    comment = "comment"
+    request_changes = "request_changes"
 
 
 class AuditEventType(str, enum.Enum):
@@ -53,6 +55,7 @@ class AuditEventType(str, enum.Enum):
     FACT_REJECTED    = "FACT_REJECTED"
     CSV_IMPORTED     = "CSV_IMPORTED"
     REPORT_GENERATED = "REPORT_GENERATED"
+    MEMO_CREATED     = "MEMO_CREATED"
 
 
 # ─────────────────────────────────────────────────────────
@@ -102,6 +105,24 @@ class Department(Base):
     company = relationship("Company", back_populates="departments")
 
 
+class UserInvite(Base):
+    __tablename__ = "user_invite"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id       = Column(UUID(as_uuid=True), ForeignKey("company.id"), nullable=False)
+    email            = Column(String(255), nullable=False)
+    department_id    = Column(UUID(as_uuid=True), ForeignKey("department.id"), nullable=True)
+    issue_group_code = Column(String(50), nullable=True)
+    invite_token     = Column(String(100), unique=True, nullable=True)
+    status           = Column(String(20), nullable=False, default="pending")  # pending, accepted
+    created_at       = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "email", name="uq_invite_company_email"),
+    )
+
+
+
 # ─────────────────────────────────────────────────────────
 # DICTIONARY LAYER
 # ─────────────────────────────────────────────────────────
@@ -143,6 +164,7 @@ class FactCandidate(Base):
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     submitted_by_user = relationship("UserAccount", back_populates="fact_candidates")
+    department        = relationship("Department")
     kpi_fact          = relationship("KPIFact", back_populates="fact_candidate", uselist=False)
 
 
@@ -226,6 +248,7 @@ class ApprovalLog(Base):
     actor_user_id     = Column(UUID(as_uuid=True), ForeignKey("user_account.id"), nullable=False)
     issue_group_code  = Column(String(50), nullable=False)
     comment           = Column(Text, nullable=True)
+    meta_data         = Column(JSON, nullable=True)
     logged_at         = Column(DateTime, default=datetime.utcnow)
 
 

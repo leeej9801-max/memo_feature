@@ -1,120 +1,85 @@
 // API base URL
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-export function buildHeaders(userId, companyId) {
+function defaultOptions(options = {}) {
   return {
-    "Content-Type": "application/json",
-    "X-User-ID":    userId,
-    "X-Company-ID": companyId,
+    ...options,
+    credentials: "include", // Starlette Session 쿠키를 전송하기 위해 필수
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   };
 }
 
+// 헬퍼: 응답 처리 표준화
+async function handleResponse(r) {
+  const data = await r.json();
+  if (!r.ok) {
+    console.error("API Error Response:", data);
+    throw data;
+  }
+  return data;
+}
+
 export const api = {
+  // Auth
+  getMe: () => fetch(`${BASE_URL}/auth/me`, defaultOptions()).then(handleResponse),
+  logout: () => fetch(`${BASE_URL}/auth/logout`, defaultOptions({ method: "POST" })).then(handleResponse),
+  mockLogin: (email) => fetch(`${BASE_URL}/auth/dev/mock_login?email=${encodeURIComponent(email)}`, defaultOptions({ method: "POST" })).then(handleResponse),
+
+  // Admin
+  listInvites: () => fetch(`${BASE_URL}/auth/admin/invites`, defaultOptions()).then(handleResponse),
+  createInvite: (email, issueGroupCode) => fetch(`${BASE_URL}/auth/admin/invites`, defaultOptions({
+    method: "POST",
+    body: JSON.stringify({ email, issue_group_code: issueGroupCode })
+  })).then(handleResponse),
+
+  // Memos (Agent)
+  createMemo: (factCandidateId, message) => fetch(`${BASE_URL}/memos`, defaultOptions({
+    method: "POST",
+    body: JSON.stringify({ fact_candidate_id: factCandidateId, message })
+  })).then(handleResponse),
+  getMemoThread: (factCandidateId) => fetch(`${BASE_URL}/memos/thread/${factCandidateId}`, defaultOptions()).then(handleResponse),
+
   // Setup
   seed: (companyName) =>
-    fetch(`${BASE_URL}/setup/seed`, {
+    fetch(`${BASE_URL}/setup/seed`, defaultOptions({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ company_name: companyName }),
-    }).then((r) => r.json()),
+    })).then(handleResponse),
 
   // STEP 1
-  uploadJson: (rows, userId, companyId) =>
-    fetch(`${BASE_URL}/input/json`, {
+  uploadJson: (rows) =>
+    fetch(`${BASE_URL}/input/json`, defaultOptions({
       method: "POST",
-      headers: buildHeaders(userId, companyId),
       body: JSON.stringify(rows),
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
-
-  uploadCsv: (file, userId, companyId) => {
-    const form = new FormData();
-    form.append("file", file);
-    return fetch(`${BASE_URL}/input/csv`, {
-      method: "POST",
-      headers: { "X-User-ID": userId, "X-Company-ID": companyId },
-      body: form,
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    });
-  },
+    })).then(handleResponse),
 
   // STEP 2
-  listFacts: (userId, companyId, status = "") =>
-    fetch(`${BASE_URL}/facts${status ? `?status=${status}` : ""}`, {
-      headers: buildHeaders(userId, companyId),
-    }).then((r) => r.json()),
+  listFacts: (status = "") =>
+    fetch(`${BASE_URL}/facts${status ? `?status=${status}` : ""}`, defaultOptions()).then(handleResponse),
 
-  submit: (factId, userId, companyId) =>
-    fetch(`${BASE_URL}/fact/${factId}/submit`, {
+  submit: (factId) =>
+    fetch(`${BASE_URL}/fact/${factId}/submit`, defaultOptions({
       method: "POST",
-      headers: buildHeaders(userId, companyId),
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
+    })).then(handleResponse),
 
-  approve: (factId, userId, companyId) =>
-    fetch(`${BASE_URL}/fact/${factId}/approve`, {
+  approve: (factId) =>
+    fetch(`${BASE_URL}/fact/${factId}/approve`, defaultOptions({
       method: "POST",
-      headers: buildHeaders(userId, companyId),
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
+    })).then(handleResponse),
 
-  reject: (factId, userId, companyId, comment = "") =>
-    fetch(`${BASE_URL}/fact/${factId}/reject`, {
+  reject: (factId, comment = "") =>
+    fetch(`${BASE_URL}/fact/${factId}/reject`, defaultOptions({
       method: "POST",
-      headers: buildHeaders(userId, companyId),
       body: JSON.stringify({ comment }),
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
-
-  // STEP 3
-  generateReport: (issueGroupCode, userId, companyId) =>
-    fetch(`${BASE_URL}/report/generate`, {
-      method: "POST",
-      headers: buildHeaders(userId, companyId),
-      body: JSON.stringify({ issue_group_code: issueGroupCode }),
-    }).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
+    })).then(handleResponse),
 
   // Evidence
-  addEvidence: (kpiFactId, evidenceKey, content, userId, companyId) =>
+  addEvidence: (kpiFactId, evidenceKey, content) =>
     fetch(
       `${BASE_URL}/evidence/add?kpi_fact_id=${kpiFactId}&evidence_key=${evidenceKey}&content=${encodeURIComponent(content || "")}`,
-      {
-        method: "POST",
-        headers: buildHeaders(userId, companyId),
-      }
-    ).then(async (r) => {
-      const data = await r.json();
-      if (!r.ok) throw data;
-      return data;
-    }),
-
-  // Logs
-  getAuditLogs: (userId, companyId) =>
-    fetch(`${BASE_URL}/logs/audit`, {
-      headers: buildHeaders(userId, companyId),
-    }).then((r) => r.json()),
-
-  getApprovalLogs: (userId, companyId) =>
-    fetch(`${BASE_URL}/logs/approval`, {
-      headers: buildHeaders(userId, companyId),
-    }).then((r) => r.json()),
+      defaultOptions({ method: "POST" })
+    ).then(handleResponse),
 };

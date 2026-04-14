@@ -18,10 +18,12 @@ STEP3: POST /report/generate
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 
 import csv
 import io
+import traceback
 
 from database import SessionLocal
 from dependencies import get_db, get_current_user
@@ -43,7 +45,12 @@ from services.approval_service import submit_fact, approve_fact, reject_fact
 from services.report_service   import generate_report_section
 
 
+from api.auth_router import router as auth_router
+from api.memo_router import router as memo_router
+
 router = APIRouter()
+router.include_router(auth_router)
+router.include_router(memo_router)
 
 
 # ─────────────────────────────────────────────────────────
@@ -98,6 +105,15 @@ def upload_json(
     """
     JSON 형식으로 ESG 데이터를 직접 입력합니다. (프론트엔드 / 테스트용)
     """
+    try:
+        # 데모 편의상: 새로 로드할 때 이전 팩트 데이터를 모두 지워서 중복 방지
+        db.query(ApprovalLog).filter(ApprovalLog.company_id == current_user.company_id).delete()
+        db.query(KPIFact).filter(KPIFact.company_id == current_user.company_id).delete()
+        db.query(FactCandidate).filter(FactCandidate.company_id == current_user.company_id).delete()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+
     created_ids = process_csv_rows(db=db, rows=rows, current_user=current_user)
     return CSVUploadResponse(
         message=f"{len(created_ids)}개의 fact_candidate가 생성되었습니다.",
@@ -132,13 +148,45 @@ def list_facts(
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """company의 전체 fact_candidate 목록 조회. status 필터 가능."""
-    query = db.query(FactCandidate).filter(
-        FactCandidate.company_id == current_user.company_id
-    )
-    if status:
-        query = query.filter(FactCandidate.status == status)
-    return query.all()
+    """
+    company의 전체 fact_candidate 목록 조회. 
+    각 지표별 comment_count를 포함하여 반환합니다.
+    """
+    try:
+        # Subquery for comment counts
+        comment_counts = db.query(
+            ApprovalLog.fact_candidate_id,
+            func.count(ApprovalLog.id).label("cnt")
+        ).filter(
+            ApprovalLog.action.in_([ActionType.comment, ActionType.request_changes])
+        ).group_by(ApprovalLog.fact_candidate_id).subquery()
+
+        query = db.query(
+            FactCandidate,
+            func.coalesce(comment_counts.c.cnt, 0).label("comment_count")
+        ).outerjoin(
+            comment_counts, FactCandidate.id == comment_counts.c.fact_candidate_id
+        ).options(
+            joinedload(FactCandidate.department),
+            joinedload(FactCandidate.submitted_by_user)
+        ).filter(
+            FactCandidate.company_id == current_user.company_id
+        )
+
+        if status:
+            query = query.filter(FactCandidate.status == status)
+        
+        results = query.all()
+        
+        outputs = []
+        for fact, count in results:
+            fact.comment_count = count
+            outputs.append(fact)
+            
+        return outputs
+    except Exception as e:
+        print(f"[ERROR] in list_facts: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error occurred while fetching facts.")
 
 
 @router.post("/fact/{fact_id}/submit", response_model=ApprovalActionResponse, tags=["STEP2 - Approval"])
