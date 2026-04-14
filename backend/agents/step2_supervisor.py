@@ -9,8 +9,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 llm = ChatOllama(
-  model="gemma2", # Adjust to the default available in user's ollama env, often llama2, llama3 or gemma2
-  base_url="http://localhost:11434",
+  model="gemma2",
+  base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
 )
 
 def context_node(state: dict) -> Command[Literal["intent_agent"]]:

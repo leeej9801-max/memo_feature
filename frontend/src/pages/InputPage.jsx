@@ -52,7 +52,7 @@ export default function InputPage({ session, onDataChange }) {
       const resp = await api.getMemoThread(fact.id);
       setMemos(resp.memos || []);
     } catch(e) {
-      toast.error("메모 스레드를 불러올 수 없습니다.");
+      toast.error("스레드 로드 실패: " + (e?.detail || e.message || "Unknown error"));
     } finally {
       setMemoLoading(false);
     }
@@ -69,7 +69,7 @@ export default function InputPage({ session, onDataChange }) {
       setMemos(resp.memos || []);
       load(); // refresh UI stats
     } catch(e) {
-      toast.error("에이전트 호출 실패");
+      toast.error("에이전트 호출 오류: " + (e?.detail || e.message || "Unknown error"));
     }
   };
 

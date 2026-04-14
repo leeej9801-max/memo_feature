@@ -37,7 +37,7 @@ export default function SetupPage({ session, refreshSession }) {
       setEmail("");
       loadInvites();
     } catch (e) {
-      toast.error(e?.detail || "초대 실패");
+      toast.error("초대 실패: " + (e?.detail || e?.message || "알 수 없는 오류"));
     }
   };
 
