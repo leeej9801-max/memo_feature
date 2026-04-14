@@ -108,10 +108,7 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
     }
   };
 
-  const submitInvite = async () => {
-    if (!inviteEmail) return toast.error("이메일을 입력하세요.");
-    try {
-      const resp = await api.createInvite(inviteEmail, inviteModal.fact.issue_group_code);
+  const submitInvite = async () => { if (!inviteEmail) return toast.error("이메일을 입력하세요."); try { const resp = await api.createInvite(inviteEmail, inviteModal.fact.issue_group_code, null, null, inviteDept || null);
       toast.success("초대장이 생성되었습니다.");
       if (resp.invite_url) {
         navigator.clipboard.writeText(resp.invite_url);
@@ -127,10 +124,10 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
 
   const seedMockData = async () => {
     const rows = [
-      { issue_group_code: "CLIMATE", metric_id: "E1-01", department: "환경팀", assignee: session?.email },
-      { issue_group_code: "CLIMATE", metric_id: "E1-02", department: "환경팀", assignee: session?.email },
-      { issue_group_code: "SAFETY", metric_id: "S1-01", department: "안전팀", assignee: session?.email },
-      { issue_group_code: "GOVERNANCE", metric_id: "G1-01", department: "경영지원", assignee: session?.email },
+      { issue_group_code: "CLIMATE", metric_id: "E1-01" },
+      { issue_group_code: "CLIMATE", metric_id: "E1-02" },
+      { issue_group_code: "SAFETY", metric_id: "S1-01" },
+      { issue_group_code: "GOVERNANCE", metric_id: "G1-01" },
     ];
     try {
       await api.uploadJson(rows);
@@ -347,9 +344,9 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
           <div className="card modal-content glass-panel">
              <div className="card-title" style={{marginBottom: 8}}>👤 지표 담당자 초대</div>
              <p style={{fontSize:12, color: "var(--text-secondary)", marginBottom: 20}}>
-               [{inviteModal.fact.metric_id}] 지표를 담당할 사용자의 이메일을 입력하세요.
+               [{inviteModal.fact.metric_id}] 지표를 담당할 사용자의 정보(부서, 이메일)를 입력하세요.
              </p>
-             <div className="form-group">
+             <div className="form-group" style={{marginBottom: 16}}><label className="form-label">부서명</label><input className="form-input" placeholder="예: 경영지원팀, 000" value={inviteDept} onChange={e=>setInviteDept(e.target.value)} /></div><div className="form-group">
                 <label className="form-label">이메일 주소</label>
                 <input 
                   className="form-input" autoFocus placeholder="manager@company.com" 
@@ -391,3 +388,4 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
     </div>
   );
 }
+

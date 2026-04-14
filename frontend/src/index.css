@@ -73,7 +73,7 @@ body {
   line-height: 1.6;
 }
 
-/* â”€â”€ Layout â”€â”€ */
+/* ?€?€ Layout ?€?€ */
 .app-layout {
   display: flex;
   min-height: 100vh;
@@ -103,6 +103,7 @@ body {
   font-weight: 700;
   background: linear-gradient(135deg, #22c55e, #3b82f6);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.3px;
 }
@@ -149,7 +150,7 @@ body {
   max-width: calc(100vw - 240px);
 }
 
-/* â”€â”€ Cards / Glass â”€â”€ */
+/* ?€?€ Cards / Glass ?€?€ */
 .card {
   background: var(--bg-glass);
   border: 1px solid var(--border-glass);
@@ -179,7 +180,7 @@ body {
   margin-top: 2px;
 }
 
-/* â”€â”€ Buttons â”€â”€ */
+/* ?€?€ Buttons ?€?€ */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -232,7 +233,7 @@ body {
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-icon { padding: 8px; }
 
-/* â”€â”€ Badges / Status â”€â”€ */
+/* ?€?€ Badges / Status ?€?€ */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -250,7 +251,7 @@ body {
 .badge-approved  { background: rgba(34,197,94,0.15);   color: #22c55e; }
 .badge-rejected  { background: rgba(239,68,68,0.15);   color: #ef4444; }
 
-/* â”€â”€ Forms â”€â”€ */
+/* ?€?€ Forms ?€?€ */
 .form-group { margin-bottom: 16px; }
 .form-label {
   display: block;
@@ -281,7 +282,7 @@ body {
 .form-select option { background: #1e293b; }
 .form-textarea { resize: vertical; min-height: 80px; }
 
-/* â”€â”€ Tables â”€â”€ */
+/* ?€?€ Tables ?€?€ */
 .table-wrapper {
   overflow-x: auto;
   border-radius: var(--radius-md);
@@ -321,7 +322,7 @@ tr:last-child td { border-bottom: none; }
 
 tr:hover td { background: var(--bg-glass); }
 
-/* â”€â”€ Page header â”€â”€ */
+/* ?€?€ Page header ?€?€ */
 .page-header { margin-bottom: 28px; }
 .page-header h2 {
   font-size: 22px;
@@ -334,7 +335,7 @@ tr:hover td { background: var(--bg-glass); }
   margin-top: 4px;
 }
 
-/* â”€â”€ Alert box â”€â”€ */
+/* ?€?€ Alert box ?€?€ */
 .alert {
   padding: 12px 16px;
   border-radius: var(--radius-sm);
@@ -346,7 +347,7 @@ tr:hover td { background: var(--bg-glass); }
 .alert-success{ background: rgba(34,197,94,0.1);  border-color: var(--accent-green); color: #86efac; }
 .alert-info   { background: rgba(59,130,246,0.1); border-color: var(--accent-blue);  color: #93c5fd; }
 
-/* â”€â”€ User context bar â”€â”€ */
+/* ?€?€ User context bar ?€?€ */
 .user-bar {
   background: var(--bg-glass);
   border: 1px solid var(--border-glass);
@@ -363,7 +364,7 @@ tr:hover td { background: var(--bg-glass); }
 .user-bar-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .user-bar-value { font-size: 13px; font-weight: 500; color: var(--text-primary); }
 
-/* â”€â”€ Stat cards â”€â”€ */
+/* ?€?€ Stat cards ?€?€ */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -397,10 +398,10 @@ tr:hover td { background: var(--bg-glass); }
 .stat-card-value.blue   { color: var(--accent-blue); }
 .stat-card-value.red    { color: var(--accent-red); }
 
-/* â”€â”€ Divider â”€â”€ */
+/* ?€?€ Divider ?€?€ */
 .divider { border: none; border-top: 1px solid var(--border-glass); margin: 20px 0; }
 
-/* â”€â”€ Code/mono â”€â”€ */
+/* ?€?€ Code/mono ?€?€ */
 .mono {
   font-family: 'Courier New', monospace;
   font-size: 12px;
@@ -421,7 +422,7 @@ tr:hover td { background: var(--bg-glass); }
   display: block;
 }
 
-/* â”€â”€ Spinner â”€â”€ */
+/* ?€?€ Spinner ?€?€ */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
   width: 18px;
@@ -433,7 +434,7 @@ tr:hover td { background: var(--bg-glass); }
   display: inline-block;
 }
 
-/* â”€â”€ Report text â”€â”€ */
+/* ?€?€ Report text ?€?€ */
 .report-text {
   white-space: pre-wrap;
   font-size: 13px;
@@ -445,23 +446,23 @@ tr:hover td { background: var(--bg-glass); }
   padding: 16px;
 }
 
-/* â”€â”€ Toast override â”€â”€ */
+/* ?€?€ Toast override ?€?€ */
 .react-hot-toast { font-family: 'Inter', sans-serif !important; }
 
-/* â”€â”€ Scrollbar â”€â”€ */
+/* ?€?€ Scrollbar ?€?€ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-/* â”€â”€ Animations â”€â”€ */
+/* ?€?€ Animations ?€?€ */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-in { animation: fadeIn 0.3s ease; }
 
-/* â”€â”€ File upload drop zone â”€â”€ */
+/* ?€?€ File upload drop zone ?€?€ */
 .drop-zone {
   border: 2px dashed var(--border-glass);
   border-radius: var(--radius-md);
@@ -478,7 +479,7 @@ tr:hover td { background: var(--bg-glass); }
 }
 .drop-zone p { font-size: 13px; margin-top: 8px; }
 
-/* â”€â”€ Pill group â”€â”€ */
+/* ?€?€ Pill group ?€?€ */
 .pill-group { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill {
   padding: 5px 14px;
@@ -497,10 +498,10 @@ tr:hover td { background: var(--bg-glass); }
   background: rgba(34,197,94,0.08);
 }
 
-/* â”€â”€ Row actions â”€â”€ */
+/* ?€?€ Row actions ?€?€ */
 .row-actions { display: flex; gap: 6px; align-items: center; }
 
-/* â”€â”€ Empty state â”€â”€ */
+/* ?€?€ Empty state ?€?€ */
 .empty-state {
   text-align: center;
   padding: 48px 24px;
@@ -509,7 +510,7 @@ tr:hover td { background: var(--bg-glass); }
 .empty-state svg { opacity: 0.3; margin-bottom: 12px; }
 .empty-state p { font-size: 13px; }
 
-/* â”€â”€ Premium Background & UI â”€â”€ */
+/* ?€?€ Premium Background & UI ?€?€ */
 .premium-bg {
   position: fixed;
   inset: 0;
@@ -544,6 +545,7 @@ tr:hover td { background: var(--bg-glass); }
   margin-bottom: 8px;
   background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -580,7 +582,7 @@ tr:hover td { background: var(--bg-glass); }
   margin-bottom: 16px;
 }
 
-/* â”€â”€ Modal & Thread Overlays â”€â”€ */
+/* ?€?€ Modal & Thread Overlays ?€?€ */
 .modal-overlay {
   position: fixed;
   inset: 0;

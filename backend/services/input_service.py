@@ -137,37 +137,35 @@ def process_csv_rows(
             UserAccount.is_active  == True,
         ).first()
 
-        if not assignee_user:
-            # 샘플 시나리오용: 담당자를 요청자로 대체
-            assignee_user_id = current_user.id
-        else:
-            assignee_user_id = assignee_user.id
+        assignee_user_id = assignee_user.id if assignee_user else None
 
         # 3) department 자동 생성
-        dept = _get_or_create_department(
-            db=db,
-            company_id=current_user.company_id,
-            dept_name=row.department,
-            issue_group_code=issue_group_code,
-        )
+        dept = None
+        if row.department:
+            dept = _get_or_create_department(
+                db=db,
+                company_id=current_user.company_id,
+                dept_name=row.department,
+                issue_group_code=issue_group_code,
+            )
 
         # 4) approval_scope 자동 생성 (샘플용)
-        _ensure_approval_scope(
-            db=db,
-            user_id=assignee_user_id,
-            issue_group_code=issue_group_code,
-        )
+        if assignee_user_id:
+            _ensure_approval_scope(
+                db=db,
+                user_id=assignee_user_id,
+                issue_group_code=issue_group_code,
+            )
 
         # 5) fact_candidate 생성
         candidate = FactCandidate(
             company_id=current_user.company_id,
             issue_group_code=issue_group_code,
             metric_id=row.metric_id,
-            value=row.value,
             value_text=row.value_text,
-            department_id=dept.id,
+            department_id=dept.id if dept else None,
             assigned_user_id=assignee_user_id,
-            submitted_by=assignee_user_id,
+            submitted_by=current_user.id,
             status=FactStatus.draft,
         )
         db.add(candidate)

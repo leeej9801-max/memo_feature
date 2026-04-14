@@ -30,9 +30,9 @@ export const api = {
 
   // Admin
   listInvites: () => fetch(`${BASE_URL}/auth/admin/invites`, defaultOptions()).then(handleResponse),
-  createInvite: (email, issueGroupCode) => fetch(`${BASE_URL}/auth/admin/invites`, defaultOptions({
+  createInvite: (email, issueGroupCode, departmentId = null, metricId = null, departmentName = null) => fetch(`${BASE_URL}/auth/admin/invites`, defaultOptions({
     method: "POST",
-    body: JSON.stringify({ email, issue_group_code: issueGroupCode })
+    body: JSON.stringify({ email, issue_group_code: issueGroupCode, department_id: departmentId, metric_id: metricId, department_name: departmentName })
   })).then(handleResponse),
   deleteInvite: (id) => fetch(`${BASE_URL}/auth/admin/invites/${id}`, defaultOptions({ method: "DELETE" })).then(handleResponse),
   listUsers: () => fetch(`${BASE_URL}/auth/admin/users`, defaultOptions()).then(handleResponse),

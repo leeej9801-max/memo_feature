@@ -9,8 +9,9 @@ import InputPage from "./pages/InputPage";
 import ApprovalPage from "./pages/ApprovalPage";
 
 const NAV = [
-  { id: "input", label: "데이터 입력 보드"},
-  { id: "setup", label: "마스터 관리 (Tenant Admin)" },
+  { id: "input",    label: "데이터 입력 보드" },
+  { id: "approval", label: "승인 워크플로우",  adminOnly: true },
+  { id: "setup",    label: "마스터 관리", adminOnly: true },
 ];
 
 export default function App() {
@@ -125,7 +126,7 @@ export default function App() {
   }
 
   const availableNav = NAV.filter(n => {
-    if ((n.id === "approval" || n.id === "setup") && session.role_code !== "tenant_admin") return false;
+    if (n.adminOnly && session.role_code !== "tenant_admin") return false;
     return true;
   });
 
@@ -198,7 +199,8 @@ export default function App() {
 
       {/* ── Main ── */}
       <main className="main-content fade-in" style={{ padding: page === "input" ? 0 : 32 }}>
-        {page === "setup" && <SetupPage session={session} refreshSession={checkSession} />}
+        {page === "setup"    && <SetupPage session={session} refreshSession={checkSession} />}
+        {page === "approval" && <ApprovalPage session={session} />}
         {page === "input" && (
           <InputPage 
             session={session} 
