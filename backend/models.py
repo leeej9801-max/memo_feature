@@ -86,7 +86,7 @@ class UserAccount(Base):
 
     company         = relationship("Company", back_populates="users")
     approval_scopes = relationship("ApprovalScope", back_populates="user")
-    fact_candidates = relationship("FactCandidate", back_populates="submitted_by_user")
+    fact_candidates = relationship("FactCandidate", back_populates="submitted_by_user", foreign_keys="[FactCandidate.submitted_by]")
 
 
 class Department(Base):
@@ -158,12 +158,14 @@ class FactCandidate(Base):
     value            = Column(Float, nullable=True)
     value_text       = Column(Text, nullable=True)
     department_id    = Column(UUID(as_uuid=True), ForeignKey("department.id"), nullable=True)
+    assigned_user_id = Column(UUID(as_uuid=True), ForeignKey("user_account.id"), nullable=True)
     submitted_by     = Column(UUID(as_uuid=True), ForeignKey("user_account.id"), nullable=False)
     status           = Column(SAEnum(FactStatus), nullable=False, default=FactStatus.draft)
     created_at       = Column(DateTime, default=datetime.utcnow)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    submitted_by_user = relationship("UserAccount", back_populates="fact_candidates")
+    submitted_by_user = relationship("UserAccount", foreign_keys=[submitted_by], back_populates="fact_candidates")
+    assigned_user     = relationship("UserAccount", foreign_keys=[assigned_user_id])
     department        = relationship("Department")
     kpi_fact          = relationship("KPIFact", back_populates="fact_candidate", uselist=False)
 

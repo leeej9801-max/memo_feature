@@ -32,7 +32,7 @@ from schemas import CSVRow, CurrentUser
 DEPT_ISSUE_MAP = {
     "환경팀":  "CLIMATE",
     "안전팀":  "SAFETY",
-    "인사팀":  "WORKFORCE",
+    "인사팀":  "HR",
     "경영지원": "GOVERNANCE",
 }
 
@@ -166,6 +166,7 @@ def process_csv_rows(
             value=row.value,
             value_text=row.value_text,
             department_id=dept.id,
+            assigned_user_id=assignee_user_id,
             submitted_by=assignee_user_id,
             status=FactStatus.draft,
         )

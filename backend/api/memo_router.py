@@ -46,6 +46,11 @@ async def create_memo(
         state = {
             "messages": [{"role": "user", "content": body.message}],
             "context": {
+                "user_id": str(current_user.id),
+                "name": current_user.name or "Unknown",
+                "email": current_user.email,
+                "role_code": current_user.role_code.value,
+                "company_id": str(current_user.company_id),
                 "row_id": str(fact.id),
                 "metric_id": fact.metric_id,
                 "issue_group_code": fact.issue_group_code,

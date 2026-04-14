@@ -34,8 +34,12 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ email, issue_group_code: issueGroupCode })
   })).then(handleResponse),
+  deleteInvite: (id) => fetch(`${BASE_URL}/auth/admin/invites/${id}`, defaultOptions({ method: "DELETE" })).then(handleResponse),
+  listUsers: () => fetch(`${BASE_URL}/auth/admin/users`, defaultOptions()).then(handleResponse),
+  revokeUser: (id) => fetch(`${BASE_URL}/auth/admin/users/${id}`, defaultOptions({ method: "DELETE" })).then(handleResponse),
 
   // Memos (Agent)
+
   createMemo: (factCandidateId, message) => fetch(`${BASE_URL}/memos`, defaultOptions({
     method: "POST",
     body: JSON.stringify({ fact_candidate_id: factCandidateId, message })
@@ -59,6 +63,11 @@ export const api = {
   // STEP 2
   listFacts: (status = "") =>
     fetch(`${BASE_URL}/facts${status ? `?status=${status}` : ""}`, defaultOptions()).then(handleResponse),
+
+  updateFact: (id, data) => fetch(`${BASE_URL}/fact/${id}`, defaultOptions({
+    method: "PATCH",
+    body: JSON.stringify(data)
+  })).then(handleResponse),
 
   submit: (factId) =>
     fetch(`${BASE_URL}/fact/${factId}/submit`, defaultOptions({

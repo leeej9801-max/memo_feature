@@ -106,13 +106,15 @@ def upload_json(
     JSON 형식으로 ESG 데이터를 직접 입력합니다. (프론트엔드 / 테스트용)
     """
     try:
-        # 데모 편의상: 새로 로드할 때 이전 팩트 데이터를 모두 지워서 중복 방지
+        # 데모 편의상: 새로 로드할 때 테넌트의 모든 비즈니스 데이터를 초기화
         db.query(ApprovalLog).filter(ApprovalLog.company_id == current_user.company_id).delete()
         db.query(KPIFact).filter(KPIFact.company_id == current_user.company_id).delete()
         db.query(FactCandidate).filter(FactCandidate.company_id == current_user.company_id).delete()
+        db.query(AuditLog).filter(AuditLog.company_id == current_user.company_id).delete()
         db.commit()
     except Exception as e:
         db.rollback()
+        logger.error(f"Reset failed: {e}")
 
     created_ids = process_csv_rows(db=db, rows=rows, current_user=current_user)
     return CSVUploadResponse(
@@ -142,6 +144,31 @@ def get_fact(
     return candidate
 
 
+@router.patch("/fact/{fact_id}", response_model=FactCandidateResponse, tags=["STEP2 - Approval"])
+def update_fact(
+    fact_id: uuid.UUID,
+    body: dict,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """fact_candidate 값 수정"""
+    candidate = db.query(FactCandidate).filter(
+        FactCandidate.id == fact_id,
+        FactCandidate.company_id == current_user.company_id,
+    ).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="FactCandidate not found.")
+    
+    if "value" in body:
+        candidate.value = body["value"]
+    if "value_text" in body:
+        candidate.value_text = body["value_text"]
+        
+    db.commit()
+    db.refresh(candidate)
+    return candidate
+
+
 @router.get("/facts", response_model=List[FactCandidateResponse], tags=["STEP2 - Approval"])
 def list_facts(
     status: Optional[str] = None,
@@ -168,7 +195,8 @@ def list_facts(
             comment_counts, FactCandidate.id == comment_counts.c.fact_candidate_id
         ).options(
             joinedload(FactCandidate.department),
-            joinedload(FactCandidate.submitted_by_user)
+            joinedload(FactCandidate.submitted_by_user),
+            joinedload(FactCandidate.assigned_user)
         ).filter(
             FactCandidate.company_id == current_user.company_id
         )

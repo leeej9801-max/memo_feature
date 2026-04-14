@@ -78,6 +78,7 @@ def get_current_user(
         company_id=user.company_id,
         role_code=user.role_code,
         email=user.email,
+        name=user.name
     )
 
 

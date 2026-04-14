@@ -100,7 +100,7 @@ export default function ApprovalPage({ session }) {
           </button>
         ))}
         <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={load}>
-          🔄 새로고침
+          새로고침
         </button>
       </div>
 

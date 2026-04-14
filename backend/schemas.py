@@ -74,6 +74,7 @@ class FactCandidateResponse(BaseModel):
     # Relationships & Counts
     department: Optional[DeptSimple] = None
     submitted_by_user: Optional[UserSimple] = None
+    assigned_user: Optional[UserSimple] = None # 배정 담당자 추가
     comment_count: int = 0
 
     class Config:

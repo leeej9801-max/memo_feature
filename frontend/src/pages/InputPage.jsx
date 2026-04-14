@@ -10,7 +10,7 @@ const METRIC_META = {
 };
 const getMeta = (metricId) => METRIC_META[metricId] || { label: "기타 지표", question: "-" };
 
-export default function InputPage({ session, onDataChange }) {
+export default function InputPage({ session, onDataChange, selectedFactId, onClearSelected }) {
   const [facts, setFacts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedFact, setSelectedFact] = useState(null);
@@ -32,7 +32,18 @@ export default function InputPage({ session, onDataChange }) {
     setLoading(true);
     try {
       const data = await api.listFacts();
-      setFacts(data || []);
+      const list = data || [];
+      setFacts(list);
+      
+      // If external selection exists, trigger drawer
+      if (selectedFactId) {
+        const target = list.find(f => f.id === selectedFactId);
+        if (target) {
+          openMemoDrawer(target);
+          if (onClearSelected) onClearSelected();
+        }
+      }
+      
       if (onDataChange) onDataChange();
     } catch(e) {
       toast.error("데이터 로드 실패");
@@ -42,7 +53,18 @@ export default function InputPage({ session, onDataChange }) {
   };
 
   useEffect(() => { load(); }, []);
-  
+
+  // Handle external selection while page is already open
+  useEffect(() => {
+    if (selectedFactId && facts.length > 0) {
+      const target = facts.find(f => f.id === selectedFactId);
+      if (target) {
+        openMemoDrawer(target);
+        if (onClearSelected) onClearSelected();
+      }
+    }
+  }, [selectedFactId, facts]);
+
   const closeContextMenu = () => setContextMenu(null);
   useEffect(() => {
     document.addEventListener("click", closeContextMenu);
@@ -105,17 +127,27 @@ export default function InputPage({ session, onDataChange }) {
 
   const seedMockData = async () => {
     const rows = [
-      { issue_group_code: "CLIMATE", metric_id: "E1-01", department: "", assignee: "" },
-      { issue_group_code: "CLIMATE", metric_id: "E1-02", department: "", assignee: "" },
-      { issue_group_code: "SAFETY", metric_id: "S1-01", department: "", assignee: "" },
-      { issue_group_code: "GOVERNANCE", metric_id: "G1-01", department: "", assignee: "" },
+      { issue_group_code: "CLIMATE", metric_id: "E1-01", department: "환경팀", assignee: session?.email },
+      { issue_group_code: "CLIMATE", metric_id: "E1-02", department: "환경팀", assignee: session?.email },
+      { issue_group_code: "SAFETY", metric_id: "S1-01", department: "안전팀", assignee: session?.email },
+      { issue_group_code: "GOVERNANCE", metric_id: "G1-01", department: "경영지원", assignee: session?.email },
     ];
     try {
       await api.uploadJson(rows);
       toast.success("초기 데이터가 생성되었습니다.");
       load();
     } catch(e) {
-      toast.error("데이터 생성 실패");
+      toast.error("데이터 생성 실패: " + (e?.detail || e.message));
+    }
+  };
+
+  const handleSubmit = async (id) => {
+    try {
+      await api.submit(id);
+      toast.success("제출되었습니다.");
+      load();
+    } catch(e) {
+      toast.error("제출 실패: " + (e?.detail || e.message));
     }
   };
 
@@ -127,10 +159,10 @@ export default function InputPage({ session, onDataChange }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 700 }}>데이터 입력 및 협업 보드</h2>
-            <p style={{ color: "var(--text-secondary)", marginTop: 6 }}>실시간으로 협업하고 지표 데이터를 관리합니다. (행을 우클릭하여 메뉴를 여세요)</p>
+            <p style={{ color: "var(--text-secondary)", marginTop: 6 }}>지표 데이터를 관리 대시보드</p>
           </div>
           {session?.role_code === "tenant_admin" && (
-             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>🔄 초기 샘플 로드 (Upsert)</button>
+             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>초기 샘플 로드 (Upsert)</button>
           )}
         </div>
 
@@ -151,7 +183,8 @@ export default function InputPage({ session, onDataChange }) {
               <tbody>
                 {facts.map((f) => {
                   const meta = getMeta(f.metric_id);
-                  const isAssigned = !!f.department;
+                  // f.department 또는 f.assigned_user 중 하나라도 있으면 배정된 것으로 간주
+                  const isAssigned = !!(f.department || f.assigned_user);
                   const canInteract = isAssigned || session?.role_code === 'tenant_admin';
 
                   return (
@@ -168,22 +201,50 @@ export default function InputPage({ session, onDataChange }) {
                       <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{meta.question}</td>
                       <td>
                          {isAssigned ? (
-                           <div style={{fontSize: 13, fontWeight: 500}}>🏢 {f.department.name}</div>
+                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
+                               {f.department?.name || "소속 없음"}
+                             </div>
+                             <div style={{ fontSize: 11, color: "var(--accent-blue)", fontWeight: 500 }}>
+                               👤 {f.assigned_user?.name || "담당자 미지정"}
+                             </div>
+                           </div>
                          ) : (
                            session?.role_code === 'tenant_admin' ? (
-                             <button className="btn btn-sm btn-ghost" onClick={() => setInviteModal({ open: true, fact: f })}>
+                             <button className="btn btn-sm btn-ghost" onClick={() => setInviteModal({ open: true, fact: f })} style={{ borderStyle: 'dashed' }}>
                                ➕ 담당자 초대
                              </button>
-                           ) : <span style={{color: "var(--text-muted)"}}>-</span>
+                           ) : <span style={{color: "var(--text-muted)", fontSize: 12}}>미배정</span>
                          )}
                       </td>
                       <td>
-                        <span className={`badge badge-${f.status}`}>
-                          {f.status.toUpperCase()}
-                        </span>
+                        <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                           <span className={`badge badge-${f.status}`}>
+                             {f.status.toUpperCase()}
+                           </span>
+                           {f.status === 'draft' && (
+                             <button className="btn btn-sm btn-primary" style={{padding: "2px 6px", fontSize: 10}} onClick={() => handleSubmit(f.id)}>제출하기</button>
+                           )}
+                        </div>
                       </td>
                       <td style={{fontWeight: 500}}>
-                        {f.value || <span style={{color: "var(--text-muted)", fontSize: 12}}>미입력</span>}
+                        <input 
+                          className="form-input"
+                          style={{ width: 100, padding: "4px 8px", background: "rgba(255,255,255,0.05)", border: "1px solid transparent" }}
+                          defaultValue={f.value || ""}
+                          placeholder="값 입력"
+                          onBlur={async (e) => {
+                            const val = e.target.value;
+                            if (val === String(f.value || "")) return;
+                            try {
+                              await api.updateFact(f.id, { value: parseFloat(val) || 0 });
+                              toast.success("저장되었습니다.");
+                              load();
+                            } catch (e) {
+                              toast.error("저장 실패");
+                            }
+                          }}
+                        />
                       </td>
                       <td>
                          <div style={{display: "flex", gap: 6, alignItems: 'center'}}>
@@ -191,8 +252,12 @@ export default function InputPage({ session, onDataChange }) {
                             <button 
                                className="btn btn-sm btn-ghost" 
                                onClick={() => openMemoDrawer(f)}
+                               style={{ position: 'relative' }}
                             >
-                               {f.comment_count > 0 ? `💬 ${f.comment_count}` : "💬"}
+                               💬
+                               {f.comment_count > 0 && (
+                                 <span className="memo-count-badge">{f.comment_count}</span>
+                               )}
                             </button>
                          </div>
                       </td>

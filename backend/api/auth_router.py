@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from authlib.integrations.starlette_client import OAuth
 
+from datetime import datetime
 from database import SessionLocal
 from dependencies import get_db
 from models import UserAccount, Company, RoleCode, UserInvite, FactCandidate, ApprovalLog, KPIFact
@@ -40,6 +41,7 @@ async def login_google(request: Request, invite_token: str = None):
 @router.get("/callback")
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
     try:
+        # 1. Google OAuth 인증
         token = await oauth.google.authorize_access_token(request)
         user_info = token.get('userinfo')
         if not user_info:
@@ -48,40 +50,31 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         email = user_info.get("email")
         name = user_info.get("name", "Unknown")
         
-        # 1. 초기 tenant_admin 시드 로직
+        # 2. 임시: 초기 tenant_admin 시드 로직
         if email == "leeej9801@gmail.com":
             user = db.query(UserAccount).filter(UserAccount.email == email).first()
             if not user:
-                # 초기 회사 생성
                 company = db.query(Company).filter(Company.name == "Initial Tenant").first()
                 if not company:
                     company = Company(name="Initial Tenant")
                     db.add(company)
                     db.flush()
-                # 관리자 유저 생성
-                user = UserAccount(
-                    company_id=company.id,
-                    email=email,
-                    name=name,
-                    role_code=RoleCode.tenant_admin
-                )
+                user = UserAccount(company_id=company.id, email=email, name=name, role_code=RoleCode.tenant_admin)
                 db.add(user)
                 db.commit()
             
-            # 세션 생성
             request.session['user_id'] = str(user.id)
             request.session['company_id'] = str(user.company_id)
             request.session['email'] = user.email
             request.session['role_code'] = user.role_code.value
-            
             return RedirectResponse(url="http://localhost:5173")
             
-        # 2. 일반 유저 권한 체크 (초대된 계정만 허용)
+        # 3. 초대 기반 가입/로그인 로직
         invite_token = request.session.pop('invite_token', None)
-        
         user = db.query(UserAccount).filter(UserAccount.email == email).first()
+        
         if not user:
-            # 토큰이 있으면 토큰으로 조회, 없으면 이메일로 'pending' 상태인 초대장 조회
+            # 신규 가입 (초대장 필수)
             if invite_token:
                 invite = db.query(UserInvite).filter(UserInvite.invite_token == invite_token, UserInvite.status == "pending").first()
             else:
@@ -90,15 +83,29 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
             if not invite:
                 raise HTTPException(status_code=403, detail="Unregistered email. You need an invitation.")
             
+            # 사용자 계정 생성
             user = UserAccount(
                 company_id=invite.company_id,
+                department_id=invite.department_id,
                 email=email,
                 name=name,
-                role_code=RoleCode.data_entry
+                role_code=RoleCode.data_entry # 기본 Role
             )
-            # 상태 업데이트
-            invite.status = "accepted"
             db.add(user)
+            db.flush()
+            
+            # 초대 상태 업데이트
+            invite.status = "accepted"
+            
+            # 배정 자동화: 해당 부서의 모든 지표를 이 유저에게 배정
+            if invite.department_id:
+                facts = db.query(FactCandidate).filter(
+                    FactCandidate.company_id == invite.company_id,
+                    FactCandidate.department_id == invite.department_id
+                ).all()
+                for f in facts:
+                    f.assigned_user_id = user.id
+            
             db.commit()
             
         request.session['user_id'] = str(user.id)
@@ -195,6 +202,8 @@ from pydantic import BaseModel
 class InviteRequest(BaseModel):
     email: str
     issue_group_code: str = None
+    department_id: str = None
+    metric_id: str = None
 
 import uuid as uuid_pkg
 
@@ -205,18 +214,30 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
     if role != RoleCode.tenant_admin.value:
         raise HTTPException(status_code=403, detail="Tenant admin only")
 
-    existing = db.query(UserInvite).filter(UserInvite.company_id == company_id, UserInvite.email == req.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Already invited")
-
+    # 기존 초대 확인
+    invite = db.query(UserInvite).filter(UserInvite.company_id == company_id, UserInvite.email == req.email).first()
     token = str(uuid_pkg.uuid4())
-    invite = UserInvite(
-        company_id=company_id,
-        email=req.email,
-        issue_group_code=req.issue_group_code,
-        invite_token=token
-    )
-    db.add(invite)
+    
+    if invite:
+        if invite.status == "accepted":
+            raise HTTPException(status_code=400, detail="User already accepted invitation")
+        # 기존 초대 정보 업데이트 및 토큰 갱신 (초기화 기능)
+        invite.issue_group_code = req.issue_group_code
+        invite.department_id = req.department_id
+        invite.metric_id = req.metric_id
+        invite.invite_token = token
+        invite.created_at = datetime.utcnow()
+    else:
+        invite = UserInvite(
+            company_id=company_id,
+            email=req.email,
+            issue_group_code=req.issue_group_code,
+            department_id=req.department_id,
+            metric_id=req.metric_id,
+            invite_token=token
+        )
+        db.add(invite)
+    
     db.commit()
     
     # 프론트엔드 URL 기반의 초대 링크 생성
@@ -224,5 +245,58 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
     return {
         "message": "Invited", 
         "id": str(invite.id), 
-        "invite_url": invite_url
+        "invite_url": invite_url,
+        "email_sent": True
     }
+
+@router.delete("/admin/invites/{invite_id}")
+async def delete_invite(invite_id: str, request: Request, db: Session = Depends(get_db)):
+    role = request.session.get('role_code')
+    company_id = request.session.get('company_id')
+    if role != RoleCode.tenant_admin.value:
+        raise HTTPException(status_code=403, detail="Tenant admin only")
+
+    invite = db.query(UserInvite).filter(UserInvite.id == invite_id, UserInvite.company_id == company_id).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+        
+    db.delete(invite)
+    db.commit()
+    return {"message": "Invite deleted"}
+
+@router.get("/admin/users")
+async def list_users(request: Request, db: Session = Depends(get_db)):
+    role = request.session.get('role_code')
+    company_id = request.session.get('company_id')
+    if role != RoleCode.tenant_admin.value:
+        raise HTTPException(status_code=403, detail="Tenant admin only")
+
+    users = db.query(UserAccount).filter(UserAccount.company_id == company_id).all()
+    return {
+        "users": [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "name": u.name,
+                "role_code": u.role_code.value,
+                "is_active": u.is_active
+            } for u in users
+        ]
+    }
+
+@router.delete("/admin/users/{user_id}")
+async def revoke_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    role = request.session.get('role_code')
+    company_id = request.session.get('company_id')
+    if role != RoleCode.tenant_admin.value:
+        raise HTTPException(status_code=403, detail="Tenant admin only")
+
+    user = db.query(UserAccount).filter(UserAccount.id == user_id, UserAccount.company_id == company_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    # Prevent self-deletion if needed, but for now simple
+    db.delete(user)
+    db.commit()
+    return {"message": "User access revoked"}
+

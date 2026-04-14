@@ -9,12 +9,13 @@ import InputPage from "./pages/InputPage";
 import ApprovalPage from "./pages/ApprovalPage";
 
 const NAV = [
-  { id: "input", label: "데이터 입력 보드", icon: "📥" },
-  { id: "setup", label: "마스터 관리 (Tenant Admin)", icon: "⚙️" },
+  { id: "input", label: "데이터 입력 보드"},
+  { id: "setup", label: "마스터 관리 (Tenant Admin)" },
 ];
 
 export default function App() {
   const [page, setPage] = useState("input");
+  const [selectedFactId, setSelectedFactId] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
@@ -156,7 +157,7 @@ export default function App() {
         <div style={{ padding: "0 12px 12px", flex: 1, overflowY: "auto" }}>
           <div className="thread-list-widget">
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 10, color: "var(--text-secondary)", display: "flex", justifyContent: "space-between", alignItems: 'center' }}>
-              <span>💬 우리 스레드 목록</span>
+              <span>💬 스레드 목록</span>
               <span className="badge" style={{ transform: 'scale(0.8)', background: 'var(--accent-purple)', color: 'white' }}>{activeThreads.length}</span>
             </div>
             {activeThreads.length === 0 ? (
@@ -166,7 +167,7 @@ export default function App() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {activeThreads.map(t => (
-                  <div key={t.id} className="thread-item" onClick={() => setPage("input")}>
+                  <div key={t.id} className="thread-item" onClick={() => { setPage("input"); setSelectedFactId(t.id); }}>
                     <div className="thread-item-label">[{t.metric_id}] {t.issue_group_code}</div>
                     <div className="thread-item-count">{t.comment_count}</div>
                   </div>
@@ -198,7 +199,14 @@ export default function App() {
       {/* ── Main ── */}
       <main className="main-content fade-in" style={{ padding: page === "input" ? 0 : 32 }}>
         {page === "setup" && <SetupPage session={session} refreshSession={checkSession} />}
-        {page === "input" && <InputPage session={session} onDataChange={loadThreads} />}
+        {page === "input" && (
+          <InputPage 
+            session={session} 
+            onDataChange={loadThreads} 
+            selectedFactId={selectedFactId} 
+            onClearSelected={() => setSelectedFactId(null)} 
+          />
+        )}
       </main>
     </div>
   );
