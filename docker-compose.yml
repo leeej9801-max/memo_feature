@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: esg_db_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: esg1234
+      POSTGRES_DB: esg_platform
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - esg-network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: esg_backend
+    ports:
+      - "6051:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:esg1234@db:5432/esg_platform
+      - GOOGLE_REDIRECT_URI=http://aiedu.tplinkdns.com:6051/auth/callback
+      - REACT_URL=http://aiedu.tplinkdns.com:6050
+      - OLLAMA_BASE_URL=http://192.168.0.105:11434
+      - SESSION_SECRET_KEY=YOUR_NEW_SESSION_SECRET_KEY
+      - LLM_MODEL=gemma3:4b
+      - SMTP_USERNAME=YOUR_EMAIL
+      - SMTP_PASSWORD=YOUR_NEW_SMTP_APP_PASSWORD
+      - SMTP_FROM_EMAIL=YOUR_EMAIL
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+    depends_on:
+      - db
+    networks:
+      - esg-network
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: esg_frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_APP_FASTAPI_URL=http://aiedu.tplinkdns.com:6051
+    depends_on:
+      - backend
+    networks:
+      - esg-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+networks:
+  esg-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

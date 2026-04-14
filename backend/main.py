@@ -54,7 +54,13 @@ app.add_middleware(
 # 2. CORS Middleware (가장 바깥쪽에서 모든 응답에 헤더 추가)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://localhost:3000",
+        "http://aiedu.tplinkdns.com", 
+        "http://aiedu.tplinkdns.com:6050",
+        os.getenv("REACT_URL", "").strip("/")
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

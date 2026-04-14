@@ -35,7 +35,7 @@ async def login_google(request: Request, invite_token: str = None):
     if invite_token:
         request.session['invite_token'] = invite_token
         
-    redirect_uri = "http://localhost:8000/auth/callback" # 고정하여 불일치 방지
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/callback")

@@ -101,6 +101,29 @@ async def create_memo(
         logger.error(f"Error in create_memo: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/{memo_id}/acknowledge")
+def acknowledge_memo(
+    memo_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """메모 확인 처리 (알림 숫자 감소)"""
+    try:
+        mid = uuid.UUID(memo_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid memo_id")
+    
+    memo = db.query(ApprovalLog).filter(
+        ApprovalLog.id == mid,
+        ApprovalLog.company_id == current_user.company_id
+    ).first()
+    if not memo:
+        raise HTTPException(status_code=404, detail="Memo not found")
+    
+    memo.is_acknowledged = True
+    db.commit()
+    return {"status": "ok", "message": "Memo acknowledged"}
+
 @router.get("/thread/{fact_id}")
 async def get_memo_thread(
     fact_id: str,

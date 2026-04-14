@@ -1,5 +1,5 @@
 // API base URL
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const BASE_URL = (import.meta.env.VITE_APP_FASTAPI_URL || "http://localhost:8000").replace(/\/$/, "");
 
 function defaultOptions(options = {}) {
   return {
@@ -45,7 +45,7 @@ export const api = {
     body: JSON.stringify({ fact_candidate_id: factCandidateId, message })
   })).then(handleResponse),
   getMemoThread: (factCandidateId) => fetch(`${BASE_URL}/memos/thread/${factCandidateId}`, defaultOptions()).then(handleResponse),
-  acknowledgeMemo: (memoId) => fetch(`${BASE_URL}/memo/${memoId}/acknowledge`, defaultOptions({ method: "POST" })).then(handleResponse),
+  acknowledgeMemo: (memoId) => fetch(`${BASE_URL}/memos/${memoId}/acknowledge`, defaultOptions({ method: "POST" })).then(handleResponse),
 
   // Setup
   seed: (companyName) =>

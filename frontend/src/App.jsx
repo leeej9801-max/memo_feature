@@ -101,7 +101,7 @@ export default function App() {
   }
 
   if (!session) {
-    const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    const BASE_URL = (import.meta.env.VITE_APP_FASTAPI_URL || "http://localhost:8000").replace(/\/$/, "");
     const googleLoginUrl = inviteToken
       ? `${BASE_URL}/auth/login/google?invite_token=${inviteToken}`
       : `${BASE_URL}/auth/login/google`;
