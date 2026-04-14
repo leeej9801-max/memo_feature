@@ -21,21 +21,20 @@ export default function InputPage({ session, onDataChange }) {
   const [memos, setMemos] = useState([]);
   const [memoPrompt, setMemoPrompt] = useState("");
 
-  // Invitation Modal State
+  // Modals & Menus
   const [inviteModal, setInviteModal] = useState({ open: false, fact: null });
   const [inviteEmail, setInviteEmail] = useState("");
+  const [uploadModal, setUploadModal] = useState({ open: false, fact: null });
+  const [contextMenu, setContextMenu] = useState(null);
 
   const load = async () => {
     if (!session) return;
     setLoading(true);
     try {
-      // API 호출
       const data = await api.listFacts();
       setFacts(data || []);
-      // 사이드바 스레드 동기화 (콜백이 있는 경우)
       if (onDataChange) onDataChange();
     } catch(e) {
-      console.error("Data load error:", e);
       toast.error("데이터 로드 실패");
     } finally {
       setLoading(false);
@@ -43,6 +42,17 @@ export default function InputPage({ session, onDataChange }) {
   };
 
   useEffect(() => { load(); }, []);
+  
+  const closeContextMenu = () => setContextMenu(null);
+  useEffect(() => {
+    document.addEventListener("click", closeContextMenu);
+    return () => document.removeEventListener("click", closeContextMenu);
+  }, []);
+
+  const handleContextMenu = (e, fact) => {
+    e.preventDefault();
+    setContextMenu({ visible: true, x: e.pageX, y: e.pageY, fact });
+  };
 
   const openMemoDrawer = async (fact) => {
     setSelectedFact(fact);
@@ -64,12 +74,15 @@ export default function InputPage({ session, onDataChange }) {
       await api.createMemo(selectedFact.id, memoPrompt);
       setMemoPrompt("");
       toast.success("메모 등록 성공");
-      
       const resp = await api.getMemoThread(selectedFact.id);
       setMemos(resp.memos || []);
       load(); // refresh UI stats
     } catch(e) {
-      toast.error("에이전트 호출 오류: " + (e?.detail || e.message || "Unknown error"));
+      if (e?.detail && typeof e.detail === 'object' && e.detail.message) {
+         toast.error(`[${e.detail.stage}] 에러: ${e.detail.detail}`);
+      } else {
+         toast.error("에이전트 호출 오류: " + (e?.detail || e?.message || "Unknown error"));
+      }
     }
   };
 
@@ -109,15 +122,15 @@ export default function InputPage({ session, onDataChange }) {
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       
-      {/* ── 1열: 메인 데이터 보드 ── */}
+      {/* ── 1/2열: 메인 데이터 보드 ── */}
       <div style={{ flex: 1, padding: 32, overflowY: "auto", background: "var(--bg-primary)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
           <div>
             <h2 style={{ fontSize: 26, fontWeight: 700 }}>데이터 입력 및 협업 보드</h2>
-            <p style={{ color: "var(--text-secondary)", marginTop: 6 }}>실시간으로 협업하고 지표 데이터를 관리합니다.</p>
+            <p style={{ color: "var(--text-secondary)", marginTop: 6 }}>실시간으로 협업하고 지표 데이터를 관리합니다. (행을 우클릭하여 메뉴를 여세요)</p>
           </div>
           {session?.role_code === "tenant_admin" && (
-             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>🔄 초기 샘플 로드</button>
+             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>🔄 초기 샘플 로드 (Upsert)</button>
           )}
         </div>
 
@@ -127,26 +140,30 @@ export default function InputPage({ session, onDataChange }) {
               <thead>
                 <tr>
                   <th>그룹</th>
-                  <th>지표 정보</th>
-                  <th>질문 항목</th>
-                  <th>담당부서/지정</th>
+                  <th>지표 식별</th>
+                  <th>입력 요건</th>
+                  <th>담당/배정</th>
                   <th>상태</th>
-                  <th>메모</th>
-                  <th>액션</th>
+                  <th>입력값</th>
+                  <th>증빙/메모</th>
                 </tr>
               </thead>
               <tbody>
                 {facts.map((f) => {
                   const meta = getMeta(f.metric_id);
                   const isAssigned = !!f.department;
-                  const canShowMemo = isAssigned || f.comment_count > 0 || session?.role_code === 'tenant_admin';
+                  const canInteract = isAssigned || session?.role_code === 'tenant_admin';
 
                   return (
-                    <tr key={f.id} className={selectedFact?.id === f.id ? "selected-row" : ""}>
+                    <tr 
+                      key={f.id} 
+                      className={selectedFact?.id === f.id ? "selected-row" : ""}
+                      onContextMenu={(e) => canInteract && handleContextMenu(e, f)}
+                    >
                       <td><span className="badge badge-draft">{f.issue_group_code}</span></td>
                       <td>
                         <div style={{ fontWeight: 600 }}>{f.metric_id}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{meta.label}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{meta.label}</div>
                       </td>
                       <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{meta.question}</td>
                       <td>
@@ -155,7 +172,7 @@ export default function InputPage({ session, onDataChange }) {
                          ) : (
                            session?.role_code === 'tenant_admin' ? (
                              <button className="btn btn-sm btn-ghost" onClick={() => setInviteModal({ open: true, fact: f })}>
-                               ➕ 초대/배정
+                               ➕ 담당자 초대
                              </button>
                            ) : <span style={{color: "var(--text-muted)"}}>-</span>
                          )}
@@ -165,23 +182,19 @@ export default function InputPage({ session, onDataChange }) {
                           {f.status.toUpperCase()}
                         </span>
                       </td>
-                      <td>
-                         <div style={{position: "relative", display: "inline-block"}}>
-                            <button 
-                               className="btn btn-sm" 
-                               disabled={!canShowMemo}
-                               style={{background: canShowMemo ? "var(--accent-purple)" : "var(--bg-glass)", color: "white"}} 
-                               onClick={() => openMemoDrawer(f)}
-                            >
-                              💬 보기
-                            </button>
-                            {f.comment_count > 0 && (
-                              <div className="memo-count-badge">{f.comment_count}</div>
-                            )}
-                         </div>
+                      <td style={{fontWeight: 500}}>
+                        {f.value || <span style={{color: "var(--text-muted)", fontSize: 12}}>미입력</span>}
                       </td>
                       <td>
-                        <button className="btn btn-sm btn-ghost" style={{fontSize: 11}} onClick={() => toast("증빙 뷰어 오픈")}>📎</button>
+                         <div style={{display: "flex", gap: 6, alignItems: 'center'}}>
+                            <button className="btn btn-sm btn-ghost" onClick={() => setUploadModal({ open: true, fact: f })}>📎</button>
+                            <button 
+                               className="btn btn-sm btn-ghost" 
+                               onClick={() => openMemoDrawer(f)}
+                            >
+                               {f.comment_count > 0 ? `💬 ${f.comment_count}` : "💬"}
+                            </button>
+                         </div>
                       </td>
                     </tr>
                   );
@@ -217,11 +230,23 @@ export default function InputPage({ session, onDataChange }) {
                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{new Date(m.logged_at).toLocaleString()}</span>
                  </div>
                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>{m.comment}</div>
+                 {m.action === 'request_changes' && (
+                    <div style={{marginTop: 8, fontSize: 11, color: "var(--accent-yellow)"}}>⚠️ 수정 요청됨</div>
+                 )}
                </div>
              ))}
+             {memos.length === 0 && !memoLoading && (
+                <div style={{textAlign: "center", color: "var(--text-muted)", marginTop: 40, fontSize: 13}}>작성된 메모가 없습니다.</div>
+             )}
           </div>
 
           <div style={{ padding: 24, borderTop: "1px solid var(--border-glass)", background: "var(--bg-secondary)" }}>
+              {/* 자동 컨텍스트 라벨 */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                 <span className="badge badge-draft" style={{fontSize: 10}}>📍 {selectedFact.metric_id}</span>
+                 <span className="badge badge-draft" style={{fontSize: 10}}>🔖 {selectedFact.issue_group_code}</span>
+                 {selectedFact.department && <span className="badge badge-draft" style={{fontSize: 10}}>🏢 {selectedFact.department.name}</span>}
+              </div>
               <textarea 
                 className="form-textarea" 
                 placeholder="지표에 대해 논의할 내용을 입력하세요..." 
@@ -236,6 +261,21 @@ export default function InputPage({ session, onDataChange }) {
         </div>
       )}
 
+      {/* ── Context Menu ── */}
+      {contextMenu && contextMenu.visible && (
+        <div style={{
+          position: "absolute", top: contextMenu.y, left: contextMenu.x,
+          background: "var(--bg-glass)", border: "1px solid var(--border-glass)",
+          borderRadius: 8, padding: 8, zIndex: 1000, minWidth: 160,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.4)", backdropFilter: "blur(12px)"
+        }}>
+          <button className="btn btn-ghost" style={{width: '100%', justifyContent: 'flex-start', fontSize: 13, padding: "8px 12px"}}
+             onClick={() => setUploadModal({open: true, fact: contextMenu.fact})}>📎 증빙 업로드</button>
+          <button className="btn btn-ghost" style={{width: '100%', justifyContent: 'flex-start', fontSize: 13, padding: "8px 12px"}}
+             onClick={() => openMemoDrawer(contextMenu.fact)}>💬 협업 스레드 보기</button>
+        </div>
+      )}
+
       {/* ── 초대 모달 ── */}
       {inviteModal.open && (
         <div className="modal-overlay">
@@ -247,16 +287,38 @@ export default function InputPage({ session, onDataChange }) {
              <div className="form-group">
                 <label className="form-label">이메일 주소</label>
                 <input 
-                  className="form-input" 
-                  autoFocus 
-                  placeholder="manager@company.com" 
-                  value={inviteEmail} 
-                  onChange={e=>setInviteEmail(e.target.value)} 
+                  className="form-input" autoFocus placeholder="manager@company.com" 
+                  value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} 
                 />
              </div>
              <div style={{display: "flex", gap: 8, marginTop: 24}}>
                 <button className="btn btn-primary" style={{flex: 1, justifyContent: "center"}} onClick={submitInvite}>초대장 발송</button>
                 <button className="btn btn-ghost" onClick={() => setInviteModal({ open: false, fact: null })}>취소</button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 업로드 모달 (Mock) ── */}
+      {uploadModal.open && (
+        <div className="modal-overlay">
+          <div className="card modal-content glass-panel">
+             <div className="card-title" style={{marginBottom: 8}}>📎 증빙 업로드</div>
+             <p style={{fontSize:12, color: "var(--text-secondary)", marginBottom: 20}}>
+               [{uploadModal.fact?.metric_id}] 에 대한 증빙 파일을 업로드하세요. (테스트 환경에서는 S3가 아닌 Mock 업로드만 진행됩니다)
+             </p>
+             <div style={{
+                border: "2px dashed var(--border-glass)", padding: 40, borderRadius: 8,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 24,
+                background: "var(--bg-secondary)"
+             }}>
+                <div style={{fontSize: 32}}>📄</div>
+                <div style={{fontSize: 13, color: "var(--text-muted)"}}>클릭하거나 파일을 이곳에 드롭하세요.</div>
+             </div>
+             <div style={{display: "flex", gap: 8}}>
+                <button className="btn btn-primary" style={{flex: 1, justifyContent: "center"}} 
+                   onClick={() => { toast.success("증빙 파일이 업로드 되었습니다."); setUploadModal({open:false, fact:null}); }}>업로드 시뮬레이션</button>
+                <button className="btn btn-ghost" onClick={() => setUploadModal({ open: false, fact: null })}>닫기</button>
              </div>
           </div>
         </div>
