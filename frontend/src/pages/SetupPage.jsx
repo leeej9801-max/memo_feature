@@ -57,7 +57,8 @@ export default function SetupPage({ session, refreshSession }) {
   };
 
   const copyLink = (token) => {
-    navigator.clipboard.writeText(`http://localhost:5173/?token=${token}`);
+    const frontendUrl = window.location.origin;
+    navigator.clipboard.writeText(`${frontendUrl}/?token=${token}`);
     toast.success("링크 복사 완료");
   };
 

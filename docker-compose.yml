@@ -19,7 +19,7 @@ services:
       context: ./backend
     container_name: esg_backend
     ports:
-      - "6051:8001"
+      - "8001:8001"
     environment:
       - DATABASE_URL=postgresql://postgres:esg1234@db:5432/esg_platform
       - GOOGLE_REDIRECT_URI=http://aiedu.tplinkdns.com:6051/auth/callback
@@ -30,7 +30,7 @@ services:
       - SMTP_USERNAME=YOUR_EMAIL
       - SMTP_PASSWORD=YOUR_NEW_SMTP_APP_PASSWORD
       - SMTP_FROM_EMAIL=YOUR_EMAIL
-      - SMTP_HOST=smtp.gmail.com
+      - SMTP_HOST: ${SMTP_HOST}
       - SMTP_PORT=587
     depends_on:
       - db

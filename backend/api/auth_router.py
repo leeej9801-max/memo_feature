@@ -67,7 +67,8 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
             request.session['company_id'] = str(user.company_id)
             request.session['email'] = user.email
             request.session['role_code'] = user.role_code.value
-            return RedirectResponse(url="http://localhost:5173")
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            return RedirectResponse(url=frontend_url)
             
         # 3. 초대 기반 가입/로그인 로직
         invite_token = request.session.pop('invite_token', None)
@@ -323,7 +324,8 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
     db.commit()
     
     # 프론트엔드 URL 기반의 초대 링크 생성
-    invite_url = f"http://localhost:5173/?token={token}"
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    invite_url = f"{frontend_url}/?token={token}"
     
     # 이메일 발송 처리
     success, detail = send_invite_email_sync(req.email, invite_url, req.department_name)
