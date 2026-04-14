@@ -73,7 +73,7 @@ export default function ApprovalPage({ session }) {
   return (
     <div>
       <div className="page-header">
-        <h2>✅ 승인 워크플로우 (관리자 전용)</h2>
+        <h2>승인 워크플로우</h2>
         <p>제출된 지표(Fact Candidate)의 Data Evidence를 검토하고 승인합니다.</p>
       </div>
 

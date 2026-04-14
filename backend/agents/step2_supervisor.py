@@ -39,15 +39,21 @@ def context_node(state: MemoState):
     db = SessionLocal()
     try:
         row_id = state["context"].get("row_id")
+        if not row_id:
+            raise ValueError("row_id is missing in context")
         rid = uuid.UUID(row_id)
         
         # 1. Fetch Fact Context
         fact = db.query(FactCandidate).filter(FactCandidate.id == rid).first()
-        fact_info = {
-            "metric_id": fact.metric_id if fact else "Unknown",
-            "issue_group_code": fact.issue_group_code if fact else "Unknown",
-            "department": fact.department.name if fact and fact.department else "Unassigned"
-        }
+        if not fact:
+            logger.error(f"Fact not found for ID: {rid}")
+            fact_info = {"metric_id": "Unknown", "issue_group_code": "Unknown", "department": "Unknown"}
+        else:
+            fact_info = {
+                "metric_id": fact.metric_id,
+                "issue_group_code": fact.issue_group_code,
+                "department": fact.department.name if fact.department else "Unassigned"
+            }
         
         # 2. Fetch Thread History (Recent 3)
         logs = db.query(ApprovalLog).filter(
@@ -72,13 +78,23 @@ def context_node(state: MemoState):
             "actor_context": actor,
             "agent_trace": ["context"]
         }
+    except Exception as e:
+        logger.error(f"Context Agent Error: {e}", exc_info=True)
+        return {
+            "fact_context": {},
+            "thread_history": [],
+            "actor_context": {},
+            "error_stage": "context",
+            "error_detail": str(e),
+            "agent_trace": ["context_error"]
+        }
     finally:
         db.close()
 
 def intent_node(state: MemoState):
     start_time = time.time()
     user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
-    history_str = "\n".join([f"- {h['actor']}: {h['message']}" for h in state.get("thread_history", [])])
+    history_str = "\n".join([f"- {h['actor']}: {h['message']}" for h in (state.get("thread_history") or [])])
     
     system_prompt = f"""You are a classifier for ESG collaboration.
 Metric: {state['fact_context'].get('metric_id')}
@@ -104,7 +120,22 @@ Output ONLY the category name."""
 def tone_node(state: MemoState):
     start_time = time.time()
     user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
-    system_prompt = "Rewrite the input into a professional Korean business sentence for ESG audits. Return ONLY the text."
+    m_type = state.get("memo_type") or "comment"
+    
+    system_prompt = f"""You are an ESG audit professional. 
+Your task is to refine the user's message into a professional business style in Korean for an ESG collaboration thread.
+
+STRICT RULES:
+1. PRESERVE THE ORIGINAL INTENT: 
+ - If it's a QUESTION (e.g., '어떻게 하나요?', '증빙은?'), refine it as a professional QUESTION.
+ - If it's an INSTRUCTION or REQUEST (e.g., '올려주세요', '수정하세요'), refine it as a professional REQUEST.
+ - If it's a FACT or COMMENT, keep it as a professional STATEMENT.
+2. DO NOT CHANGE THE MEANING.
+3. Category Hint: {m_type}
+4. Metric Context: {state.get('fact_context', {}).get('metric_id')}
+
+Refine the text locally into natural, professional Korean. 
+Output ONLY the refined sentence."""
 
     try:
         response = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
@@ -134,7 +165,8 @@ If it is relevant, output 'PROCEED'. Return ONLY one word."""
 
 def router_node(state: MemoState):
     """Determine next step based on validation"""
-    if "rejected" in state.get("memo_type", ""):
+    mtype = state.get("memo_type") or ""
+    if "rejected" in mtype:
         return END
     return "intent_node"
 
@@ -144,8 +176,8 @@ def persist_node(state: MemoState):
     
     payload = {
         "raw_prompt": state["messages"][-1]["content"] if state["messages"] else "",
-        "refined_message": state.get("refined_text", ""),
-        "memo_type": state.get("memo_type", "comment"),
+        "refined_message": state.get("refined_text") or "",
+        "memo_type": state.get("memo_type") or "comment",
         
         "target_type": "fact_candidate",
         "target_id": state["context"].get("row_id"),

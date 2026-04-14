@@ -142,8 +142,9 @@ def submit_fact(
         db=db,
     )
 
-    # 상태 변경
+    # 상태 변경 및 배정 자동화 (ESG 담당자/제출자 본인 배정)
     candidate.status = FactStatus.submitted
+    candidate.assigned_user_id = current_user.id
 
     # 이중 로그 기록
     _write_approval_log(

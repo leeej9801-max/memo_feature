@@ -11,7 +11,7 @@ from authlib.integrations.starlette_client import OAuth
 from datetime import datetime
 from database import SessionLocal
 from dependencies import get_db
-from models import UserAccount, Company, RoleCode, UserInvite, FactCandidate, ApprovalLog, KPIFact
+from models import UserAccount, Company, RoleCode, UserInvite, FactCandidate, ApprovalLog, KPIFact, ApprovalScope, ActionType
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -86,7 +86,6 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
             # 사용자 계정 생성
             user = UserAccount(
                 company_id=invite.company_id,
-                department_id=invite.department_id,
                 email=email,
                 name=name,
                 role_code=RoleCode.data_entry # 기본 Role
@@ -105,6 +104,15 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
                 ).all()
                 for f in facts:
                     f.assigned_user_id = user.id
+            
+            # 권한 자동 부여: 초대된 그룹에 대해 'submit' 권한 추가
+            if invite.issue_group_code:
+                new_scope = ApprovalScope(
+                    user_id=user.id,
+                    scope_value=invite.issue_group_code,
+                    action_type=ActionType.submit
+                )
+                db.add(new_scope)
             
             db.commit()
             
@@ -204,14 +212,26 @@ async def list_invites(request: Request, db: Session = Depends(get_db)):
     }
 
 from pydantic import BaseModel
+from typing import Optional
+
 class InviteRequest(BaseModel):
     email: str
-    issue_group_code: str = None
-    department_id: str = None
-    department_name: str = None # 추가
-    metric_id: str = None
+    issue_group_code: Optional[str] = None
+    department_id: Optional[str] = None
+    department_name: Optional[str] = None
+    metric_id: Optional[str] = None
 
 import uuid as uuid_pkg
+from services.mail_service import send_invite_email_sync
+
+# 부서명 기반 그룹 코드 자동 매핑 (데이터 무결성용)
+DEPT_ISSUE_MAP = {
+    "환경팀": "CLIMATE",
+    "환경부": "CLIMATE",
+    "안전팀": "SAFETY",
+    "인사팀": "WORKFORCE",
+    "경영지원": "GOVERNANCE",
+}
 
 @router.post("/admin/invites")
 async def create_invite(req: InviteRequest, request: Request, db: Session = Depends(get_db)):
@@ -231,7 +251,9 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
         from models import Department
         dept = db.query(Department).filter(Department.company_id == company_id, Department.name == req.department_name).first()
         if not dept:
-            dept = Department(company_id=company_id, name=req.department_name, issue_group_code=req.issue_group_code or "CSV")
+            # 이름 기반으로 그룹 코드 자동 결정 (매핑에 없으면 요청된 코드나 "CSV" 사용)
+            final_group = DEPT_ISSUE_MAP.get(req.department_name, req.issue_group_code or "CSV")
+            dept = Department(company_id=company_id, name=req.department_name, issue_group_code=final_group)
             db.add(dept)
             db.flush()
         target_dept_id = str(dept.id)
@@ -241,7 +263,6 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
             raise HTTPException(status_code=400, detail="User already accepted invitation")
         invite.issue_group_code = req.issue_group_code
         invite.department_id = target_dept_id
-        invite.metric_id = req.metric_id
         invite.invite_token = token
         invite.created_at = datetime.utcnow()
     else:
@@ -250,21 +271,36 @@ async def create_invite(req: InviteRequest, request: Request, db: Session = Depe
             email=req.email,
             issue_group_code=req.issue_group_code,
             department_id=target_dept_id,
-            metric_id=req.metric_id,
             invite_token=token
         )
         db.add(invite)
+
+    # 연관 지표가 있다면 즉시 부서 할당 (수시 배정 대응)
+    if req.metric_id:
+        fact = db.query(FactCandidate).filter(
+            FactCandidate.company_id == company_id,
+            FactCandidate.metric_id == req.metric_id
+        ).first()
+        if fact:
+            fact.department_id = target_dept_id
     
     db.commit()
     
     # 프론트엔드 URL 기반의 초대 링크 생성
     invite_url = f"http://localhost:5173/?token={token}"
-    return {
-        "message": "Invited", 
-        "id": str(invite.id), 
-        "invite_url": invite_url,
-        "email_sent": True
+    
+    # 이메일 발송 처리
+    success, detail = send_invite_email_sync(req.email, invite_url, req.department_name)
+    
+    response = {
+        "invite_created": True,
+        "email_sent": success,
+        "invite_url": invite_url
     }
+    if not success:
+        response["detail"] = detail
+        
+    return response
 
 @router.delete("/admin/invites/{invite_id}")
 async def delete_invite(invite_id: str, request: Request, db: Session = Depends(get_db)):

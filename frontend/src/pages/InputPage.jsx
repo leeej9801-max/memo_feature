@@ -24,6 +24,7 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
   // Modals & Menus
   const [inviteModal, setInviteModal] = useState({ open: false, fact: null });
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDept, setInviteDept] = useState("");
   const [uploadModal, setUploadModal] = useState({ open: false, fact: null });
   const [contextMenu, setContextMenu] = useState(null);
 
@@ -108,7 +109,7 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
     }
   };
 
-  const submitInvite = async () => { if (!inviteEmail) return toast.error("이메일을 입력하세요."); try { const resp = await api.createInvite(inviteEmail, inviteModal.fact.issue_group_code, null, null, inviteDept || null);
+  const submitInvite = async () => { if (!inviteEmail) return toast.error("이메일을 입력하세요."); try { const resp = await api.createInvite(inviteEmail, inviteModal.fact.issue_group_code, null, inviteModal.fact.metric_id, inviteDept || null);
       toast.success("초대장이 생성되었습니다.");
       if (resp.invite_url) {
         navigator.clipboard.writeText(resp.invite_url);
@@ -118,7 +119,11 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
       setInviteEmail("");
       load();
     } catch (e) {
-      toast.error(e?.detail || "초대 실패");
+      if (e?.detail && typeof e.detail === 'object') {
+        toast.error("초대 실패: 올바르지 않은 값입니다.");
+      } else {
+        toast.error(e?.detail || "초대 실패");
+      }
     }
   };
 
@@ -159,7 +164,7 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
             <p style={{ color: "var(--text-secondary)", marginTop: 6 }}>지표 데이터를 관리 대시보드</p>
           </div>
           {session?.role_code === "tenant_admin" && (
-             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>초기 샘플 로드 (Upsert)</button>
+             <button className="btn btn-ghost" onClick={seedMockData} style={{fontSize: 12}}>지표 로드 (Upsert)</button>
           )}
         </div>
 
@@ -172,8 +177,8 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                   <th>지표 식별</th>
                   <th>입력 요건</th>
                   <th>담당/배정</th>
-                  <th>상태</th>
                   <th>입력값</th>
+                  <th>현황/조치</th>
                   <th>증빙/메모</th>
                 </tr>
               </thead>
@@ -183,6 +188,8 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                   // f.department 또는 f.assigned_user 중 하나라도 있으면 배정된 것으로 간주
                   const isAssigned = !!(f.department || f.assigned_user);
                   const canInteract = isAssigned || session?.role_code === 'tenant_admin';
+                  const isOwner = f.assigned_user?.id === session?.id;
+                  const canEdit = isOwner || session?.role_code === 'tenant_admin';
 
                   return (
                     <tr 
@@ -200,7 +207,7 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                          {isAssigned ? (
                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
-                               {f.department?.name || "소속 없음"}
+                               {f.department?.name || (f.assigned_user?.role_code === 'tenant_admin' ? "ESG 관리자" : "소속 없음")}
                              </div>
                              <div style={{ fontSize: 11, color: "var(--accent-blue)", fontWeight: 500 }}>
                                👤 {f.assigned_user?.name || "담당자 미지정"}
@@ -214,25 +221,30 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                            ) : <span style={{color: "var(--text-muted)", fontSize: 12}}>미배정</span>
                          )}
                       </td>
-                      <td>
-                        <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
-                           <span className={`badge badge-${f.status}`}>
-                             {f.status.toUpperCase()}
-                           </span>
-                           {f.status === 'draft' && (
-                             <button className="btn btn-sm btn-primary" style={{padding: "2px 6px", fontSize: 10}} onClick={() => handleSubmit(f.id)}>제출하기</button>
-                           )}
-                        </div>
-                      </td>
                       <td style={{fontWeight: 500}}>
                         <input 
                           className="form-input"
-                          style={{ width: 100, padding: "4px 8px", background: "rgba(255,255,255,0.05)", border: "1px solid transparent" }}
-                          defaultValue={f.value || ""}
-                          placeholder="값 입력"
+                          style={{ 
+                            width: 100, 
+                            padding: "4px 10px", 
+                            background: canEdit ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.1)", 
+                            border: canEdit ? "1px solid var(--border-glass)" : "1px solid transparent",
+                            cursor: canEdit ? "text" : "default",
+                            color: "var(--text-primary)",
+                            fontWeight: canEdit ? 600 : 400
+                          }}
+                          value={f.value || ""}
+                          placeholder={canEdit ? "값 입력" : ""}
+                          readOnly={!canEdit}
+                          title={!canEdit ? "권한이 없습니다." : ""}
+                          onChange={(e) => {
+                            if (!canEdit) return;
+                            const newVal = e.target.value;
+                            setFacts(prev => prev.map(item => item.id === f.id ? { ...item, value: newVal } : item));
+                          }}
                           onBlur={async (e) => {
+                            if (!canEdit) return;
                             const val = e.target.value;
-                            if (val === String(f.value || "")) return;
                             try {
                               await api.updateFact(f.id, { value: parseFloat(val) || 0 });
                               toast.success("저장되었습니다.");
@@ -242,6 +254,20 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                             }
                           }}
                         />
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {f.status === 'draft' && <span className="badge badge-ghost" style={{minWidth: 60}}>📝 대기</span>}
+                          {f.status === 'submitted' && <span className="badge badge-primary" style={{minWidth: 60}}>👀 검토중</span>}
+                          {f.status === 'approved' && <span className="badge badge-success" style={{minWidth: 60}}>✅ 승인</span>}
+                          {(f.status === 'rejected' || f.status === 'request_changes') && <span className="badge badge-danger" style={{minWidth: 60}}>❌ 반려</span>}
+                          
+                          {f.status === 'draft' && canEdit && (
+                            <button className="btn btn-primary" style={{fontSize: 11, padding: '4px 8px', height: 'auto'}} onClick={() => handleSubmit(f.id)}>
+                              제출
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td>
                          <div style={{display: "flex", gap: 6, alignItems: 'center'}}>
@@ -282,21 +308,34 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-             {memoLoading ? <div className="spinner" style={{margin: "40px auto"}} /> : memos.map(m => (
-               <div key={m.id} style={{ 
-                 background: "var(--bg-glass)", border: "1px solid var(--border-glass)", 
-                 borderRadius: "var(--radius-md)", padding: 16 
-               }}>
-                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                   <strong style={{ color: "var(--accent-blue)", fontSize: 12 }}>{m.actor_name || "System"}</strong>
-                   <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{new Date(m.logged_at).toLocaleString()}</span>
-                 </div>
-                 <div style={{ fontSize: 13, lineHeight: 1.6 }}>{m.comment}</div>
-                 {m.action === 'request_changes' && (
-                    <div style={{marginTop: 8, fontSize: 11, color: "var(--accent-yellow)"}}>⚠️ 수정 요청됨</div>
-                 )}
-               </div>
-             ))}
+             {memoLoading ? <div className="spinner" style={{margin: "40px auto"}} /> : memos.map(m => {
+               const colors = ["var(--accent-blue)", "var(--accent-green)", "var(--accent-purple)", "var(--accent-yellow)", "#f43f5e"];
+               const charCodeSum = (m.actor_id || "0").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+               const themeColor = colors[charCodeSum % colors.length];
+               const isMe = m.actor_id === session?.id;
+
+               return (
+                <div key={m.id} style={{ 
+                  background: isMe ? "rgba(255,255,255,0.06)" : "var(--bg-glass)", 
+                  border: isMe ? `1px solid ${themeColor}` : "1px solid var(--border-glass)", 
+                  borderRadius: "var(--radius-md)", padding: 16,
+                  alignSelf: isMe ? "flex-end" : "flex-start",
+                  width: "90%",
+                  position: 'relative'
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                    <strong style={{ color: themeColor, fontSize: 11 }}>
+                      {m.actor_department} / {m.actor_name}
+                    </strong>
+                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{new Date(m.logged_at).toLocaleString()}</span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text-primary)" }}>{m.comment}</div>
+                  {m.action === 'request_changes' && (
+                     <div style={{marginTop: 8, fontSize: 11, color: "var(--accent-yellow)", fontWeight: 600}}>⚠️ 수정 요청됨</div>
+                  )}
+                </div>
+               );
+             })}
              {memos.length === 0 && !memoLoading && (
                 <div style={{textAlign: "center", color: "var(--text-muted)", marginTop: 40, fontSize: 13}}>작성된 메모가 없습니다.</div>
              )}
@@ -305,9 +344,9 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
           <div style={{ padding: 24, borderTop: "1px solid var(--border-glass)", background: "var(--bg-secondary)" }}>
               {/* 자동 컨텍스트 라벨 */}
               <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                 <span className="badge badge-draft" style={{fontSize: 10}}>📍 {selectedFact.metric_id}</span>
-                 <span className="badge badge-draft" style={{fontSize: 10}}>🔖 {selectedFact.issue_group_code}</span>
-                 {selectedFact.department && <span className="badge badge-draft" style={{fontSize: 10}}>🏢 {selectedFact.department.name}</span>}
+                 <span className="badge badge-draft" style={{fontSize: 10}}> {selectedFact.metric_id}</span>
+                 <span className="badge badge-draft" style={{fontSize: 10}}> {selectedFact.issue_group_code}</span>
+                 {selectedFact.department && <span className="badge badge-draft" style={{fontSize: 10}}> {selectedFact.department.name}</span>}
               </div>
               <textarea 
                 className="form-textarea" 

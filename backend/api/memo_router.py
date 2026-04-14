@@ -2,6 +2,8 @@
 memo_router.py - 멀티에이전트 Supervisor 연동 메모 라우터
 """
 
+import logging
+from datetime import datetime
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -14,6 +16,8 @@ from schemas import CurrentUser
 from models import ApprovalLog, UserAccount, RoleCode, Company, FactCandidate
 from services.memo_service import save_memo_entry
 from agents.step2_supervisor import get_memo_graph
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/memos", tags=["Memos"])
 
@@ -47,7 +51,7 @@ async def create_memo(
             "messages": [{"role": "user", "content": body.message}],
             "context": {
                 "user_id": str(current_user.id),
-                "name": current_user.name or "Unknown",
+                "name": getattr(current_user, "name", "Unknown") or "Unknown",
                 "email": current_user.email,
                 "role_code": current_user.role_code.value,
                 "company_id": str(current_user.company_id),
@@ -62,9 +66,22 @@ async def create_memo(
         graph = get_memo_graph()
         output = graph.invoke(state)
         
-        payload = output.get("payload", {})
+        # Check if rejected by supervisor
+        if output.get("memo_type") == "rejected":
+            return MemoResponse(
+                id="none",
+                action="reject",
+                actor_user_id=str(current_user.id),
+                issue_group_code=fact.issue_group_code,
+                comment="[Supervisor] 이 메시지는 지표와 관련이 없어 거절되었습니다. 관련 있는 내용을 입력해주세요.",
+                meta_data={"rejected": True},
+                logged_at=datetime.utcnow().isoformat()
+            )
+
+        payload = output.get("payload")
         if not payload:
-            raise Exception("Agent payload missing")
+            logger.error(f"Agent payload missing. Output: {output}")
+            raise HTTPException(status_code=500, detail="Agent processing failed to produce a valid payload.")
             
         # Store using Service Layer
         memo = save_memo_entry(db, fact_id, current_user, payload)
@@ -78,7 +95,10 @@ async def create_memo(
             meta_data=memo.meta_data,
             logged_at=memo.logged_at.isoformat()
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error in create_memo: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/thread/{fact_id}")
@@ -110,10 +130,23 @@ async def get_memo_thread(
         results = []
         for l in logs:
             user = db.query(UserAccount).filter(UserAccount.id == l.actor_user_id).first()
+            
+            # 부서 정보 추론: 1차(tenant_admin 여부), 2차(초대 이력/Fact 배정)
+            dept_name = "미지정 부서"
+            if user.role_code == RoleCode.tenant_admin:
+                dept_name = "ESG 관리자"
+            else:
+                # 사용자가 배정된 지표 중 하나의 부서를 가져옴 (샘플 로직)
+                f_sample = db.query(FactCandidate).filter(FactCandidate.assigned_user_id == user.id).first()
+                if f_sample and f_sample.department:
+                    dept_name = f_sample.department.name
+
             results.append({
                 "id": str(l.id),
+                "actor_id": str(user.id),
                 "actor_name": user.name if user else "Unknown",
                 "actor_role": user.role_code.value if user else "Unknown",
+                "actor_department": dept_name,
                 "action": l.action.value,
                 "comment": l.comment,
                 "meta_data": l.meta_data,

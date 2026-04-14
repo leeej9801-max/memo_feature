@@ -46,7 +46,11 @@ export default function SetupPage({ session, refreshSession }) {
       setModal(false);
       loadData();
     } catch (e) {
-      toast.error("초대 실패: " + (e?.detail || e?.message || "알 수 없는 오류"));
+      if (e?.detail && typeof e.detail === 'object') {
+        toast.error("초대 실패 상세: " + JSON.stringify(e.detail));
+      } else {
+        toast.error("초대 실패: " + (e?.detail || e?.message || "알 수 없는 오류"));
+      }
     } finally {
       setInviting(false);
     }
@@ -87,7 +91,7 @@ export default function SetupPage({ session, refreshSession }) {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div className="page-header">
-        <h2>⚙️ 테넌트 마스터 관리</h2>
+        <h2>⚙️관리자 계정 관리</h2>
         <p>전체 담당자 초대 현황 및 활동 중인 계정을 관리합니다.</p>
       </div>
 

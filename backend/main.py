@@ -39,22 +39,25 @@ app = FastAPI(
 )
 
 
+
 # ─────────────────────────────────────────────────────────
-# CORS (React 프론트엔드 허용)
+# 미들웨어 설정 (Starlette stack: 나중에 추가된 것이 먼저 실행됨)
 # ─────────────────────────────────────────────────────────
 
+# 1. Session Middleware
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv("SESSION_SECRET_KEY", "fallback_local_secret_key_if_missing"), 
+    max_age=86400
+)
+
+# 2. CORS Middleware (가장 바깥쪽에서 모든 응답에 헤더 추가)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-app.add_middleware(
-    SessionMiddleware, 
-    secret_key=os.getenv("SESSION_SECRET_KEY", "fallback_local_secret_key_if_missing"), 
-    max_age=86400
 )
 
 

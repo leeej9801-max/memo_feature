@@ -170,6 +170,8 @@ def update_fact(
         candidate.value = body["value"]
     if "value_text" in body:
         candidate.value_text = body["value_text"]
+    if "assigned_user_id" in body:
+        candidate.assigned_user_id = body["assigned_user_id"]
         
     db.commit()
     db.refresh(candidate)
@@ -233,6 +235,9 @@ def submit(
     """
     [STEP2] draft → submitted 상태 전이.
     submit 권한이 있는 사용자만 가능.
+    # 상태 변경 및 배정 자동화 (ESG 담당자/제출자 본인 배정)
+    candidate.status = FactStatus.submitted
+    candidate.assigned_user_id = current_user.id
     """
     candidate = submit_fact(db=db, fact_id=fact_id, current_user=current_user)
     return ApprovalActionResponse(

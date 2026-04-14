@@ -20,6 +20,7 @@ class CurrentUser(BaseModel):
     company_id: UUID
     role_code: RoleCode
     email: str
+    name: str
 
     class Config:
         from_attributes = True
@@ -35,8 +36,8 @@ class CSVRow(BaseModel):
     metric_id: str        = Field(..., description="e.g. E1-15")
     value: Optional[float] = None
     value_text: Optional[str] = None
-    department: str       = Field(..., description="부서명 (없으면 자동 생성)")
-    assignee: str         = Field(..., description="담당자 이메일 (user_account 매핑 키)")
+    department: Optional[str] = Field(None, description="부서명 (없으면 자동 생성 또는 미배정)")
+    assignee: Optional[str] = Field(None, description="담당자 이메일 (user_account 매핑 키, 없으면 미배정)")
 
 
 class CSVUploadResponse(BaseModel):
