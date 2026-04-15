@@ -94,18 +94,33 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
   const handleSendMemo = async () => {
     if(!memoPrompt.trim()) return;
     try {
-      await api.createMemo(selectedFact.id, memoPrompt);
+      const payload = {
+        messages: [{ role: "user", content: memoPrompt.trim() }],
+        context: {
+          row_id: selectedFact.id,
+          user_id: session?.id,
+          name: session?.name,
+          email: session?.email,
+          role_code: session?.role_code,
+          company_id: session?.company_id
+        }
+      };
+
+      // 1. 메모 전송
+      await api.createMemo(payload); 
+      
+      // 2. 입력창 비우기
       setMemoPrompt("");
       toast.success("메모 등록 성공");
+
+      // 3. [핵심] 해당 지표의 스레드를 즉시 다시 불러와서 state 업데이트
       const resp = await api.getMemoThread(selectedFact.id);
       setMemos(resp.memos || []);
-      load(); // refresh UI stats
+      
+      // 4. 메인 테이블의 카운트 등을 위해 전체 데이터 로드 호출
+      load(); 
     } catch(e) {
-      if (e?.detail && typeof e.detail === 'object' && e.detail.message) {
-         toast.error(`[${e.detail.stage}] 에러: ${e.detail.detail}`);
-      } else {
-         toast.error("에이전트 호출 오류: " + (e?.detail || e?.message || "Unknown error"));
-      }
+      toast.error("전송 실패");
     }
   };
 

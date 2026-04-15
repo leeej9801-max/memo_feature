@@ -55,10 +55,10 @@ export const api = {
   revokeUser: (id) =>
     fetch(`${BASE_URL}/auth/admin/users/${id}`, defaultOptions({ method: "DELETE" })).then(handleResponse),
 
-  createMemo: (factCandidateId, message) =>
+  createMemo: (payload) =>
     fetch(`${BASE_URL}/memos`, defaultOptions({
       method: "POST",
-      body: JSON.stringify({ fact_candidate_id: factCandidateId, message })
+      body: JSON.stringify(payload) // 전체 payload를 그대로 전송
     })).then(handleResponse),
   getMemoThread: (factCandidateId) =>
     fetch(`${BASE_URL}/memos/thread/${factCandidateId}`, defaultOptions()).then(handleResponse),

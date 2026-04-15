@@ -2,8 +2,8 @@ import os
 import requests
 from langchain_ollama import ChatOllama
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemma2:9b")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.105:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemma3:4b")
 
 llm = ChatOllama(
     model=LLM_MODEL,

@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/memos", tags=["Memos"])
 
 class MemoRequest(BaseModel):
-    fact_candidate_id: str
-    message: str
+    # 특정 필드를 고정하지 않고, 프론트에서 보내는 모든 데이터를 딕셔너리로 받음
+    messages: list
+    context: dict
 
 class MemoResponse(BaseModel):
     id: str
@@ -36,30 +37,29 @@ class MemoResponse(BaseModel):
 
 @router.post("", response_model=MemoResponse)
 async def create_memo(
-    body: MemoRequest,
+    body: MemoRequest, # 이제 body.messages와 body.context에 접근 가능
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     try:
-        fact_id = uuid.UUID(body.fact_candidate_id)
+        # 2. 프론트엔드에서 보낸 context 안의 row_id(UUID)를 추출 및 검증
+        fact_id_str = body.context.get("row_id")
+        if not fact_id_str:
+            raise HTTPException(status_code=422, detail="row_id is required in context")
+            
+        try:
+            fact_id = uuid.UUID(str(fact_id_str))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid UUID format for row_id")
+
         fact = db.query(FactCandidate).filter(FactCandidate.id == fact_id).first()
         if not fact:
             raise HTTPException(status_code=404, detail="Fact not found")
 
-        # Context for Supervisor Agent
+        # 3. Supervisor Agent를 위한 State 구성 (프론트엔드 데이터 그대로 사용)
         state = {
-            "messages": [{"role": "user", "content": body.message}],
-            "context": {
-                "user_id": str(current_user.id),
-                "name": getattr(current_user, "name", "Unknown") or "Unknown",
-                "email": current_user.email,
-                "role_code": current_user.role_code.value,
-                "company_id": str(current_user.company_id),
-                "row_id": str(fact.id),
-                "metric_id": fact.metric_id,
-                "issue_group_code": fact.issue_group_code,
-                "department_id": str(fact.department_id) if fact.department_id else None
-            }
+            "messages": body.messages,
+            "context": body.context
         }
 
         # Run Supervisor Graph
@@ -73,7 +73,7 @@ async def create_memo(
                 action="reject",
                 actor_user_id=str(current_user.id),
                 issue_group_code=fact.issue_group_code,
-                comment="[Supervisor] 이 메시지는 지표와 관련이 없어 거절되었습니다. 관련 있는 내용을 입력해주세요.",
+                comment="[Supervisor] 이 메시지는 지표와 관련이 없어 거절되었습니다.",
                 meta_data={"rejected": True},
                 logged_at=datetime.utcnow().isoformat()
             )
@@ -83,7 +83,7 @@ async def create_memo(
             logger.error(f"Agent payload missing. Output: {output}")
             raise HTTPException(status_code=500, detail="Agent processing failed to produce a valid payload.")
             
-        # Store using Service Layer
+        # 4. Service 레이어를 통해 DB 저장
         memo = save_memo_entry(db, fact_id, current_user, payload)
         
         return MemoResponse(

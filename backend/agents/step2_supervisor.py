@@ -5,6 +5,7 @@ import time
 from typing import Literal, Dict, Any, List, TypedDict, Annotated, Optional
 from langgraph.graph import StateGraph, START, END
 import os
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from database import SessionLocal
 from models import FactCandidate, ApprovalLog, UserAccount, ActionType
@@ -33,6 +34,13 @@ class MemoState(TypedDict):
     payload: dict
 
 # --- Nodes ---
+def _get_msg_content(msg):
+    """안전하게 메시지 내용을 추출하는 헬퍼 함수"""
+    if hasattr(msg, "content"):
+        return msg.content
+    elif isinstance(msg, dict):
+        return msg.get("content", "")
+    return str(msg)
 
 def context_node(state: MemoState):
     start_time = time.time()
@@ -41,7 +49,7 @@ def context_node(state: MemoState):
         row_id = state["context"].get("row_id")
         if not row_id:
             raise ValueError("row_id is missing in context")
-        rid = uuid.UUID(row_id)
+        rid = uuid.UUID(str(row_id))
         
         # 1. Fetch Fact Context
         fact = db.query(FactCandidate).filter(FactCandidate.id == rid).first()
@@ -93,20 +101,24 @@ def context_node(state: MemoState):
 
 def intent_node(state: MemoState):
     start_time = time.time()
-    user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
+    last_msg = state["messages"][-1] if state.get("messages") else ""
+    user_prompt = _get_msg_content(last_msg)
     history_str = "\n".join([f"- {h['actor']}: {h['message']}" for h in (state.get("thread_history") or [])])
     
     system_prompt = f"""You are a classifier for ESG collaboration.
-Metric: {state['fact_context'].get('metric_id')}
-Dept: {state['fact_context'].get('department')}
-Recent Thread:
-{history_str}
+                        Metric: {state['fact_context'].get('metric_id')}
+                        Dept: {state['fact_context'].get('department')}
+                        Recent Thread:
+                        {history_str}
 
-Categories: 'comment', 'question', 'evidence_request', 'correction_request'.
-Output ONLY the category name."""
+                        Categories: 'comment', 'question', 'evidence_request', 'correction_request'.
+                        Output ONLY the category name."""
 
     try:
-        response = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ])
         m_type = response.content.strip().lower()
         matched = "comment"
         for vt in ["comment", "question", "evidence_request", "correction_request"]:
@@ -119,46 +131,57 @@ Output ONLY the category name."""
 
 def tone_node(state: MemoState):
     start_time = time.time()
-    user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
+    last_msg = state["messages"][-1] if state.get("messages") else ""
+    user_prompt = _get_msg_content(last_msg)
     m_type = state.get("memo_type") or "comment"
     
     system_prompt = f"""You are an ESG audit professional. 
-Your task is to refine the user's message into a professional business style in Korean for an ESG collaboration thread.
+                        Your task is to refine the user's message into a professional business style in Korean for an ESG collaboration thread.
 
-STRICT RULES:
-1. PRESERVE THE ORIGINAL INTENT: 
- - If it's a QUESTION (e.g., '어떻게 하나요?', '증빙은?'), refine it as a professional QUESTION.
- - If it's an INSTRUCTION or REQUEST (e.g., '올려주세요', '수정하세요'), refine it as a professional REQUEST.
- - If it's a FACT or COMMENT, keep it as a professional STATEMENT.
-2. DO NOT CHANGE THE MEANING.
-3. Category Hint: {m_type}
-4. Metric Context: {state.get('fact_context', {}).get('metric_id')}
+                        STRICT RULES:
+                        1. PRESERVE THE ORIGINAL INTENT: 
+                        - If it's a QUESTION (e.g., '어떻게 하나요?', '증빙은?'), refine it as a professional QUESTION.
+                        - If it's an INSTRUCTION or REQUEST (e.g., '올려주세요', '수정하세요'), refine it as a professional REQUEST.
+                        - If it's a FACT or COMMENT, keep it as a professional STATEMENT.
+                        2. DO NOT CHANGE THE MEANING.
+                        3. Category Hint: {m_type}
+                        4. Metric Context: {state.get('fact_context', {}).get('metric_id')}
 
-Refine the text locally into natural, professional Korean. 
-Output ONLY the refined sentence."""
+                        Refine the text locally into natural, professional Korean. 
+                        Output ONLY the refined sentence."""
 
     try:
-        response = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ])
         logger.info(f"Tone Agent finished in {time.time()-start_time:.2f}s")
         return {"refined_text": response.content.strip(), "agent_trace": ["tone"]}
     except Exception as e:
         return {"refined_text": user_prompt, "fallback_used": True, "error_stage": "tone", "error_detail": str(e), "agent_trace": ["tone_fallback"]}
 
 def validation_node(state: MemoState):
-    """지표와 메시지의 연관성 체크 (Supervisor 역할)"""
+    """지표와 메시지의 연관성 체크 (검증 기준 완화)"""
     start_time = time.time()
-    user_prompt = state["messages"][-1]["content"] if state["messages"] else ""
+    last_msg = state["messages"][-1] if state.get("messages") else ""
+    user_prompt = _get_msg_content(last_msg)
     metric_id = state.get("fact_context", {}).get("metric_id")
     
     system_prompt = f"""You are an ESG Compliance Supervisor.
-Check if the user's message is RELEVANT to the metric [{metric_id}].
-If it is totally irrelevant (e.g., 'Hello', 'What's for lunch'), output 'REJECT'.
-If it is relevant, output 'PROCEED'. Return ONLY one word."""
+                        The user is discussing the metric [{metric_id}].
+                        Check if the message is related to data input, feedback, or collaboration.
+                        Even if it is brief like 'Too high' or 'Please check', it is RELEVANT.
+                        Only output 'REJECT' if it is completely off-topic (e.g., casual greetings).
+                        Otherwise, output 'PROCEED'. Return ONLY one word."""
     
     try:
-        response = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}])
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ])
         decision = response.content.strip().upper()
         logger.info(f"Validation Agent finished in {time.time()-start_time:.2f}s: {decision}")
+        
         return {"agent_trace": ["validation"], "memo_type": "rejected" if "REJECT" in decision else state.get("memo_type")}
     except Exception as e:
         return {"agent_trace": ["validation_error"]}
@@ -167,17 +190,26 @@ def router_node(state: MemoState):
     """Determine next step based on validation"""
     mtype = state.get("memo_type") or ""
     if "rejected" in mtype:
-        return END
+        return "persist_node"  # 무관한 메시지도 반려 코멘트로 DB에 저장하도록 우회
     return "intent_node"
 
 def persist_node(state: MemoState):
     fc = state.get("fact_context", {})
     ac = state.get("actor_context", {})
     
+    last_msg = state["messages"][-1] if state.get("messages") else ""
+    raw_prompt = _get_msg_content(last_msg)
+    
+    mtype = state.get("memo_type") or "comment"
+    refined = state.get("refined_text") or ""
+    
+    if "rejected" in mtype and not refined:
+        refined = "[AI 검증 결과] 해당 지표와 무관한 메시지로 분류되어 반려 처리되었습니다."
+
     payload = {
-        "raw_prompt": state["messages"][-1]["content"] if state["messages"] else "",
-        "refined_message": state.get("refined_text") or "",
-        "memo_type": state.get("memo_type") or "comment",
+        "raw_prompt": raw_prompt,
+        "refined_message": refined,
+        "memo_type": mtype,
         
         "target_type": "fact_candidate",
         "target_id": state["context"].get("row_id"),
@@ -218,7 +250,7 @@ def get_memo_graph():
         router_node,
         {
             "intent_node": "intent_node",
-             END: END
+            "persist_node": "persist_node"
         }
     )
     
