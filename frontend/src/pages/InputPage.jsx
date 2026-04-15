@@ -109,20 +109,40 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
     }
   };
 
-  const submitInvite = async () => { if (!inviteEmail) return toast.error("이메일을 입력하세요."); try { const resp = await api.createInvite(inviteEmail, inviteModal.fact.issue_group_code, null, inviteModal.fact.metric_id, inviteDept || null);
-      toast.success("초대장이 생성되었습니다.");
+  const submitInvite = async () => { 
+    if (!inviteEmail.trim()) return toast.error("이메일을 입력하세요."); 
+    if (!inviteDept.trim()) return toast.error("부서명을 입력하세요. (예: 경영지원팀)");
+    
+    try { 
+      const resp = await api.createInvite(inviteEmail.trim(), inviteModal.fact.issue_group_code, null, inviteModal.fact.metric_id, inviteDept.trim());
+      
+      if (resp.email_sent === false) {
+        toast.error("이메일 발송 실패: " + (resp.detail || "설정 오류"));
+      } else {
+        toast.success("초대장이 이메일로 발송되었습니다.");
+      }
+
       if (resp.invite_url) {
-        navigator.clipboard.writeText(resp.invite_url);
-        toast("링크가 복사되었습니다.", { icon: '🔗' });
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(resp.invite_url)
+            .then(() => toast("링크가 복사되었습니다.", { icon: '🔗' }))
+            .catch(err => {
+              console.error("Clipboard copy failed:", err);
+              toast.error("링크 복사에 실패했습니다. 수동으로 복사해주세요.");
+            });
+        } else {
+          toast("초대 링크가 생성되었습니다. (수동 복사 필요)", { icon: '🔗' });
+        }
       }
       setInviteModal({ open: false, fact: null });
       setInviteEmail("");
+      setInviteDept("");
       load();
     } catch (e) {
       if (e?.detail && typeof e.detail === 'object') {
         toast.error("초대 실패: 올바르지 않은 값입니다.");
       } else {
-        toast.error(e?.detail || "초대 실패");
+        toast.error("초대 실패: " + (e?.detail || e?.message || "알 수 없는 오류"));
       }
     }
   };
@@ -215,7 +235,11 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                            </div>
                          ) : (
                            session?.role_code === 'tenant_admin' ? (
-                             <button className="btn btn-sm btn-ghost" onClick={() => setInviteModal({ open: true, fact: f })} style={{ borderStyle: 'dashed' }}>
+                             <button className="btn btn-sm btn-ghost" onClick={() => { 
+                               setInviteModal({ open: true, fact: f }); 
+                               setInviteEmail(""); 
+                               setInviteDept(""); 
+                             }} style={{ borderStyle: 'dashed' }}>
                                ➕ 담당자 초대
                              </button>
                            ) : <span style={{color: "var(--text-muted)", fontSize: 12}}>미배정</span>
@@ -345,7 +369,8 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
                         try {
                           await api.acknowledgeMemo(m.id);
                           toast.success("확인 처리되었습니다.");
-                          loadMemos(selectedFact.id);
+                          const resp = await api.getMemoThread(selectedFact.id);
+                          setMemos(resp.memos || []);
                           load(); // Update sidebar/table count
                         } catch (e) {
                           toast.error("처리 실패");
@@ -449,4 +474,3 @@ export default function InputPage({ session, onDataChange, selectedFactId, onCle
     </div>
   );
 }
-

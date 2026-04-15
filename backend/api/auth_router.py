@@ -35,7 +35,11 @@ async def login_google(request: Request, invite_token: str = None):
     if invite_token:
         request.session['invite_token'] = invite_token
         
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    # 환경 변수 대신, 요청이 들어온 도메인(localhost 또는 aiedu)을 기반으로 동적 콜백 주소 생성
+    # 이렇게 하면 Hairpin NAT 차단을 우회하여 로컬에서도 로그인 테스트가 가능합니다.
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/auth/callback"
+    
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/callback")
@@ -67,7 +71,10 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
             request.session['company_id'] = str(user.company_id)
             request.session['email'] = user.email
             request.session['role_code'] = user.role_code.value
-            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            
+            # 동적 프론트엔드 주소 반환 (외부는 6051->6050, 로컬은 :8001->제거(80))
+            base_url = str(request.base_url).rstrip("/")
+            frontend_url = base_url.replace("6051", "6050").replace(":8001", "")
             return RedirectResponse(url=frontend_url)
             
         # 3. 초대 기반 가입/로그인 로직
@@ -116,18 +123,16 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
                 db.add(new_scope)
             
             db.commit()
-            
-            # 0) Enum 깨짐 방지: 잘못된 client_user를 data_entry로 강제 업데이트 (로그인 시점)
-            from sqlalchemy import text
-            db.execute(text("UPDATE user_account SET role_code = 'data_entry' WHERE role_code = 'client_user'"))
-            db.commit()
 
         request.session['user_id'] = str(user.id)
         request.session['company_id'] = str(user.company_id)
         request.session['email'] = user.email
         request.session['role_code'] = user.role_code.value
 
-        return RedirectResponse(url="http://localhost:5173")
+        # 동적 프론트엔드 주소 반환 (외부는 6051->6050, 로컬은 :8001->제거(80))
+        base_url = str(request.base_url).rstrip("/")
+        frontend_url = base_url.replace("6051", "6050").replace(":8001", "")
+        return RedirectResponse(url=frontend_url)
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -391,4 +396,3 @@ async def revoke_user(user_id: str, request: Request, db: Session = Depends(get_
     db.delete(user)
     db.commit()
     return {"message": "User access revoked"}
-

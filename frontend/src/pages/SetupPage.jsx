@@ -38,10 +38,24 @@ export default function SetupPage({ session, refreshSession }) {
     setInviting(true);
     try {
       const resp = await api.createInvite(inviteEmail.trim(), null, null, null, inviteDept.trim());
-      toast.success("초대 링크가 생성되었습니다.");
+      
+      if (resp.email_sent === false) {
+        toast.error("이메일 발송 실패: " + (resp.detail || "설정 오류"));
+      } else {
+        toast.success("초대 링크가 이메일로 발송되었습니다.");
+      }
+
       if (resp.invite_url) {
-        navigator.clipboard.writeText(resp.invite_url);
-        toast("링크가 클립보드에 복사되었습니다.", { icon: "🔗" });
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(resp.invite_url)
+            .then(() => toast("링크가 클립보드에 복사되었습니다.", { icon: "🔗" }))
+            .catch(err => {
+              console.error("Clipboard copy failed:", err);
+              toast.error("링크 복사에 실패했습니다. 수동으로 복사해주세요.");
+            });
+        } else {
+          toast("초대 링크가 생성되었습니다. (수동 복사 필요)", { icon: '🔗' });
+        }
       }
       setModal(false);
       loadData();

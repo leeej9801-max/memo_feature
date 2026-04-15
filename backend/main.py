@@ -44,23 +44,32 @@ app = FastAPI(
 # 미들웨어 설정 (Starlette stack: 나중에 추가된 것이 먼저 실행됨)
 # ─────────────────────────────────────────────────────────
 
-# 1. Session Middleware
+# 1. Session Middleware (same_site="lax" → OAuth redirect 후 세션 쿠키 유지)
 app.add_middleware(
     SessionMiddleware, 
     secret_key=os.getenv("SESSION_SECRET_KEY", "fallback_local_secret_key_if_missing"), 
-    max_age=86400
+    max_age=86400,
+    same_site="lax",
+    https_only=False,
 )
 
 # 2. CORS Middleware (가장 바깥쪽에서 모든 응답에 헤더 추가)
+_origins = [
+    "http://localhost:5173", 
+    "http://localhost:3000",
+    "http://localhost",
+    "http://aiedu.tplinkdns.com", 
+    "http://aiedu.tplinkdns.com:6050",
+    "http://aiedu.tplinkdns.com:6051",
+    os.getenv("FRONTEND_URL", ""),
+    os.getenv("REACT_URL", ""),
+]
+# 빈 문자열·중복 제거
+_origins = list({o.strip("/") for o in _origins if o})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://localhost:3000",
-        "http://aiedu.tplinkdns.com", 
-        "http://aiedu.tplinkdns.com:6050",
-        os.getenv("REACT_URL", "").strip("/")
-    ],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

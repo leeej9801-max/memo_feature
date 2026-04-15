@@ -2,6 +2,10 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Accept build arg for Vite env variable
+ARG VITE_APP_FASTAPI_URL=http://aiedu.tplinkdns.com:6051
+ENV VITE_APP_FASTAPI_URL=${VITE_APP_FASTAPI_URL}
+
 # Copy package files
 COPY package*.json ./
 
@@ -12,7 +16,7 @@ RUN npm install
 COPY . .
 
 # Expose Vite dev port
-EXPOSE 5173
+EXPOSE 80
 
 # Command to run Vite dev server
 # Need --host to allow external access

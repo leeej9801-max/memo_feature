@@ -101,7 +101,18 @@ export default function App() {
   }
 
   if (!session) {
-    const BASE_URL = (import.meta.env.VITE_APP_FASTAPI_URL || "http://localhost:8000").replace(/\/$/, "");
+    let BASE_URL = import.meta.env.VITE_APP_FASTAPI_URL
+      ? import.meta.env.VITE_APP_FASTAPI_URL.replace(/\/$/, "")
+      : "";
+
+    if (typeof window !== "undefined") {
+      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        BASE_URL = window.location.protocol + "//" + window.location.hostname + ":8001";
+      } else if (!BASE_URL) {
+        BASE_URL = window.location.origin.replace("6050", "6051");
+      }
+    }
+
     const googleLoginUrl = inviteToken
       ? `${BASE_URL}/auth/login/google?invite_token=${inviteToken}`
       : `${BASE_URL}/auth/login/google`;
